@@ -75,9 +75,9 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-100 border-b-2 border-slate-200">
-                                <!-- Increased width from w-20 to w-28 (approx 30% increase) to prevent State truncation -->
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-28 text-lg">St</th>
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-44 text-lg text-center">Type</th>
+                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-16 text-lg">St</th>
+                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-48 text-lg">City</th>
+                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-40 text-lg text-center">Type</th>
                                 <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-64 text-lg">Timing</th>
                                 <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 text-lg">Hazard Details</th>
                             </tr>
@@ -201,6 +201,13 @@
                 });
                 routeSummary.classList.remove('hidden');
 
+                // Mapping of state to list of cities in that state along the route
+                const stateCityMap = {};
+                routeCities.forEach(c => {
+                    if (!stateCityMap[c.state]) stateCityMap[c.state] = [];
+                    stateCityMap[c.state].push(c.name.split('/')[0]);
+                });
+
                 const stateSequence = [...new Set(routeCities.map(c => c.state))];
                 log(`Fetching alerts for states: ${stateSequence.join(', ')}`);
                 
@@ -226,7 +233,9 @@
                                 if (!seenAlerts.has(key)) {
                                     seenAlerts.add(key);
                                     alertsFound = true;
-                                    appendRow(state, alert, tableBody);
+                                    // Associate with the first hub found in this state on the route
+                                    const primaryCity = stateCityMap[state][0] || "";
+                                    appendRow(state, primaryCity, alert, tableBody);
                                 }
                             });
                         }
@@ -311,7 +320,7 @@
             return final;
         }
 
-        function appendRow(state, alert, tbody) {
+        function appendRow(state, city, alert, tbody) {
             // Clean headline to remove redundant time/date info
             const rawHeadline = alert.properties.headline || '';
             const cleanHeadline = rawHeadline
@@ -323,6 +332,7 @@
             row.className = "border-b border-slate-200 hover:bg-slate-50 transition";
             row.innerHTML = `
                 <td class="p-2 font-black text-blue-900 align-middle text-2xl">${state}</td>
+                <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap">${city}</td>
                 <td class="p-2 align-middle">
                     <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">
                         ${alert.properties.event}
