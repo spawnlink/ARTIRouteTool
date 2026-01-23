@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trucking Weather Route Alert Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet Map CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Leaflet Map JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <style>
         .loader {
             border: 4px solid #f3f3f3;
@@ -20,6 +24,14 @@
         /* Ensure table layout is fixed to respect truncation */
         table { table-layout: fixed; width: 100%; border-collapse: collapse; }
         th, td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        #map {
+            height: 450px;
+            width: 100%;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+            z-index: 10;
+        }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans">
@@ -71,7 +83,7 @@
                     <span id="timestamp" class="text-sm text-gray-500 italic"></span>
                 </div>
 
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto mb-8">
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-100 border-b-2 border-slate-200">
@@ -87,6 +99,14 @@
                         </tbody>
                     </table>
                 </div>
+                
+                <!-- Map Visualization -->
+                <div id="mapSection" class="mt-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Trip Visualizer</h3>
+                    <div id="map" class="shadow-inner"></div>
+                    <p class="text-xs text-slate-400 italic mt-2 text-center">Interactive map showing selected corridor hubs from Start to Finish.</p>
+                </div>
+
                 <div id="noAlerts" class="hidden p-16 text-center text-gray-500 italic bg-slate-50 rounded-xl mt-4 border-2 border-dashed">
                     No severe winter alerts found for this specific corridor at this time.
                 </div>
@@ -99,6 +119,10 @@
     </div>
 
     <script>
+        let map = null;
+        let routeLayer = null;
+        let markerLayer = null;
+
         function log(msg, isError = false) {
             console.log(`[TRIP] ${msg}`);
             const logBox = document.getElementById('debugLog');
@@ -112,7 +136,6 @@
         }
 
         const hubs = [
-            // Midwest
             { name: "Kalona/Iowa City, IA", state: "IA", lat: 41.66, lon: -91.53 },
             { name: "Des Moines, IA", state: "IA", lat: 41.58, lon: -93.60 },
             { name: "Davenport, IA", state: "IA", lat: 41.52, lon: -90.57 },
@@ -122,7 +145,6 @@
             { name: "St. Louis, MO", state: "MO", lat: 38.62, lon: -90.19 },
             { name: "Springfield, MO", state: "MO", lat: 37.20, lon: -93.29 },
             { name: "Joplin, MO", state: "MO", lat: 37.08, lon: -94.51 },
-            // South Central / Plains
             { name: "Oklahoma City, OK", state: "OK", lat: 35.46, lon: -97.51 },
             { name: "Tulsa, OK", state: "OK", lat: 36.15, lon: -95.99 },
             { name: "McAlester, OK", state: "OK", lat: 34.93, lon: -95.76 },
@@ -132,7 +154,6 @@
             { name: "Texarkana, TX/AR", state: "AR", lat: 33.42, lon: -94.04 },
             { name: "Little Rock, AR", state: "AR", lat: 34.74, lon: -92.28 },
             { name: "Wichita, KS", state: "KS", lat: 37.68, lon: -97.33 },
-            // Southeast
             { name: "Memphis, TN", state: "TN", lat: 35.14, lon: -90.04 },
             { name: "Nashville, TN", state: "TN", lat: 36.16, lon: -86.78 },
             { name: "Atlanta, GA", state: "GA", lat: 33.74, lon: -84.38 },
@@ -140,12 +161,10 @@
             { name: "Jackson, MS", state: "MS", lat: 32.29, lon: -90.18 },
             { name: "Charlotte, NC", state: "NC", lat: 35.22, lon: -80.84 },
             { name: "Greenville, SC", state: "SC", lat: 34.85, lon: -82.39 },
-            // Mid-Atlantic
             { name: "York, PA", state: "PA", lat: 39.96, lon: -76.72 },
             { name: "Harrisburg, PA", state: "PA", lat: 40.27, lon: -76.88 },
             { name: "Philadelphia, PA", state: "PA", lat: 39.95, lon: -75.16 },
             { name: "Baltimore, MD", state: "MD", lat: 39.29, lon: -76.61 },
-            // West
             { name: "Denver, CO", state: "CO", lat: 39.73, lon: -104.99 },
             { name: "Albuquerque, NM", state: "NM", lat: 35.08, lon: -106.65 },
             { name: "Phoenix, AZ", state: "AZ", lat: 33.44, lon: -112.07 },
@@ -154,7 +173,6 @@
             { name: "Los Angeles, CA", state: "CA", lat: 34.05, lon: -118.24 },
             { name: "Sacramento, CA", state: "CA", lat: 38.58, lon: -121.49 },
             { name: "Seattle, WA", state: "WA", lat: 47.60, lon: -122.33 },
-            // Others
             { name: "Chicago, IL", state: "IL", lat: 41.87, lon: -87.62 },
             { name: "Indianapolis, IN", state: "IN", lat: 39.76, lon: -86.15 },
             { name: "Omaha, NE", state: "NE", lat: 41.25, lon: -95.93 }
@@ -162,10 +180,8 @@
 
         async function geocode(location) {
             log(`Geocoding: ${location}...`);
-            
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), 4000);
-
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&countrycodes=us&limit=1`, { 
                     signal: controller.signal,
@@ -185,29 +201,33 @@
             } catch (err) {
                 log(`Geocode service unavailable: ${err.name === 'AbortError' ? 'Timeout' : err.message}.`, true);
             }
-
             log("Attempting local database match...");
             const inputLower = location.toLowerCase();
             const stateMatch = location.match(/\b([A-Z]{2})\b/i);
             const stateCode = stateMatch ? stateMatch[1].toUpperCase() : null;
-
             let localHub = hubs.find(h => inputLower.includes(h.name.toLowerCase().split('/')[0]));
-            if (!localHub && stateCode) {
-                localHub = hubs.find(h => h.state === stateCode);
-            }
-
+            if (!localHub && stateCode) localHub = hubs.find(h => h.state === stateCode);
             if (localHub) {
                 log(`Using closest hub: ${localHub.name}`);
                 return { ...localHub };
             }
-
             return null;
+        }
+
+        function initMap() {
+            if (!map) {
+                map = L.map('map').setView([39.8283, -98.5795], 4);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+                routeLayer = L.layerGroup().addTo(map);
+                markerLayer = L.layerGroup().addTo(map);
+            }
         }
 
         async function calculateAndCheck() {
             const startStr = document.getElementById('startInput').value.trim();
             const endStr = document.getElementById('endInput').value.trim();
-            
             if (!startStr || !endStr) {
                 alert("Please enter both locations.");
                 return;
@@ -230,7 +250,6 @@
             try {
                 const startPoint = await geocode(startStr);
                 const endPoint = await geocode(endStr);
-
                 if (!startPoint || !endPoint) {
                     const missing = !startPoint ? startStr : endStr;
                     log(`Error: Could not locate "${missing}"`, true);
@@ -253,11 +272,18 @@
                 });
                 routeSummary.classList.remove('hidden');
 
+                // Draw Map
+                initMap();
+                drawRouteMap(startPoint, endPoint, routeCities);
+
                 const seenAlerts = new Set();
                 let alertsFound = false;
 
-                for (const hub of routeCities) {
+                for (let i = 0; i < routeCities.length; i++) {
+                    const hub = routeCities[i];
                     log(`Polling alerts for ${hub.name}...`);
+                    let cityAlertsFoundForThisHub = false;
+                    
                     try {
                         const response = await fetch(`https://api.weather.gov/alerts/active?point=${hub.lat},${hub.lon}`);
                         if (!response.ok) throw new Error("Point request failed");
@@ -269,13 +295,16 @@
                                 return e.includes('winter') || e.includes('ice') || e.includes('snow') || e.includes('cold') || e.includes('blizzard') || e.includes('sleet');
                             });
 
-                            if (filtered.length > 0) log(`Found ${filtered.length} relevant alerts for ${hub.name}`);
+                            if (filtered.length > 0) {
+                                log(`Found ${filtered.length} relevant alerts for ${hub.name}`);
+                                cityAlertsFoundForThisHub = true;
+                                alertsFound = true;
+                            }
 
                             filtered.forEach(alert => {
                                 const key = `${hub.name}-${alert.properties.event}-${alert.properties.headline}`;
                                 if (!seenAlerts.has(key)) {
                                     seenAlerts.add(key);
-                                    alertsFound = true;
                                     appendRow(hub, alert, tableBody);
                                 }
                             });
@@ -283,18 +312,20 @@
                     } catch (e) {
                         log(`Warning: Failed to fetch data for ${hub.name}.`, true);
                     }
+
+                    // User Request: If this is the START or END city and no reports exist, show specific line
+                    if (!cityAlertsFoundForThisHub && (i === 0 || i === routeCities.length - 1)) {
+                        appendEmptyRow(hub, tableBody);
+                    }
                 }
 
                 document.getElementById('timestamp').innerText = `Updated: ${new Date().toLocaleTimeString()}`;
-                if (!alertsFound) {
-                    log("Complete: No severe winter alerts active for this specific path.");
-                    document.getElementById('noAlerts').classList.remove('hidden');
-                } else {
-                    log("Complete: Localized alerts loaded.");
-                    document.getElementById('noAlerts').classList.add('hidden');
-                }
                 
+                // Note: Always showing resultsArea now because we always show start/end rows
                 resultsArea.classList.remove('hidden');
+                
+                // Final map refresh to ensure markers are visible after results show
+                setTimeout(() => map.invalidateSize(), 200);
 
             } catch (err) {
                 log(`Critical Failure: ${err.message}`, true);
@@ -319,8 +350,7 @@
                 return { ...h, t, perpDist };
             });
 
-            // Adjusted corridor: perpDist < 1.2 (approx. 80 miles)
-            // captures start, end, and everything within 80 miles of the direct line
+            // Tighten corridor: perpDist < 1.2 (approx. 80 miles)
             corridor = corridor.filter(h => h.t >= -0.05 && h.t <= 1.05 && h.perpDist < 1.2);
             corridor.sort((a, b) => a.t - b.t);
 
@@ -336,34 +366,63 @@
             if (final.length > 7) {
                 const step = (final.length - 1) / 6;
                 const pruned = [];
-                for(let i=0; i<7; i++) {
-                    pruned.push(final[Math.round(i * step)]);
-                }
+                for(let i=0; i<7; i++) pruned.push(final[Math.round(i * step)]);
                 return pruned;
             }
-
             return final;
+        }
+
+        function drawRouteMap(start, end, corridor) {
+            routeLayer.clearLayers();
+            markerLayer.clearLayers();
+
+            const latlngs = [
+                [start.lat, start.lon],
+                ...corridor.map(c => [c.lat, c.lon]),
+                [end.lat, end.lon]
+            ];
+
+            L.polyline(latlngs, {
+                color: '#3b82f6',
+                weight: 4,
+                dashArray: '10, 10',
+                opacity: 0.8
+            }).addTo(routeLayer);
+
+            latlngs.forEach((ll, i) => {
+                const isStart = i === 0;
+                const isEnd = i === latlngs.length - 1;
+                const name = isStart ? "START" : (isEnd ? "END" : corridor[i-1].name.split('/')[0]);
+                const color = isStart ? '#10b981' : (isEnd ? '#ef4444' : '#3b82f6');
+                
+                L.circleMarker(ll, {
+                    radius: isStart || isEnd ? 8 : 5,
+                    fillColor: color,
+                    color: "#fff",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 1
+                }).addTo(markerLayer).bindTooltip(name, { permanent: true, direction: 'top', offset: [0, -10] });
+            });
+
+            map.fitBounds(L.latLngBounds(latlngs), { 
+                padding: [150, 150], 
+                maxZoom: 5 
+            });
         }
 
         function appendRow(hub, alert, tbody) {
             const rawHeadline = alert.properties.headline || '';
-            const cleanHeadline = rawHeadline
-                .split('...')[0]
-                .replace(/(IN EFFECT|REMAINS IN EFFECT|FROM|UNTIL|THROUGH).*/gi, '')
-                .trim();
-
+            const cleanHeadline = rawHeadline.split('...')[0].replace(/(IN EFFECT|REMAINS IN EFFECT|FROM|UNTIL|THROUGH).*/gi, '').trim();
             const cityName = hub.name.split('/')[0];
             const reportUrl = `https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}`;
-
             const row = document.createElement('tr');
             row.className = "border-b border-slate-200 hover:bg-slate-50 transition";
             row.innerHTML = `
                 <td class="p-2 font-black text-blue-900 align-middle text-2xl w-28">${hub.state}</td>
                 <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap w-48">${cityName}</td>
                 <td class="p-2 align-middle w-40">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">
-                        ${alert.properties.event}
-                    </span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span>
                 </td>
                 <td class="p-2 text-xl align-middle text-slate-700 font-bold leading-none w-64">
                     <div class="uppercase tracking-tight"><span class="text-slate-400 mr-2 text-[10px] uppercase">Starts</span> ${formatDate(alert.properties.effective)}</div>
@@ -372,9 +431,32 @@
                 <td class="p-2 align-middle">
                     <div class="flex items-center gap-3 overflow-hidden">
                          <a href="${reportUrl}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View</a>
-                         <p class="font-bold text-slate-800 text-xl overflow-hidden text-ellipsis whitespace-nowrap" title="${rawHeadline.replace(/"/g, '&quot;')}">
-                            ${cleanHeadline || rawHeadline}
-                         </p>
+                         <p class="font-bold text-slate-800 text-xl overflow-hidden text-ellipsis whitespace-nowrap" title="${rawHeadline.replace(/"/g, '&quot;')}">${cleanHeadline || rawHeadline}</p>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        }
+
+        // Helper to append a row when no reports are active for a specific city
+        function appendEmptyRow(hub, tbody) {
+            const cityName = hub.name.split('/')[0];
+            const reportUrl = `https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}`;
+            const row = document.createElement('tr');
+            row.className = "border-b border-slate-200 bg-slate-50 opacity-75";
+            row.innerHTML = `
+                <td class="p-2 font-black text-slate-400 align-middle text-2xl w-28">${hub.state}</td>
+                <td class="p-2 font-bold text-slate-400 align-middle text-xl w-48">${cityName}</td>
+                <td class="p-2 align-middle w-40 text-center">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter bg-slate-200 text-slate-500">None</span>
+                </td>
+                <td class="p-2 text-xl align-middle text-slate-400 font-medium w-64 italic">
+                    Clear Conditions
+                </td>
+                <td class="p-2 align-middle">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                         <a href="${reportUrl}" target="_blank" class="bg-slate-300 text-slate-600 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-slate-400 transition shadow-sm shrink-0">View</a>
+                         <p class="text-slate-400 text-xl italic">No reports issued on this line</p>
                     </div>
                 </td>
             `;
@@ -393,10 +475,8 @@
             const d = new Date(str);
             const hour = d.getHours();
             let period = "Night";
-            
             if (hour >= 5 && hour < 12) period = "Morning";
             else if (hour >= 12 && hour < 17) period = "Noon";
-            
             const datePart = d.toLocaleDateString([], {month: 'short', day: 'numeric'});
             return `${datePart} (${period})`;
         }
