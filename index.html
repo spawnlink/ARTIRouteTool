@@ -201,11 +201,11 @@
                 });
                 routeSummary.classList.remove('hidden');
 
-                // Mapping of state to list of cities in that state along the route
-                const stateCityMap = {};
+                // Mapping of state to list of cities (hubs) in that state along the route
+                const stateHubMap = {};
                 routeCities.forEach(c => {
-                    if (!stateCityMap[c.state]) stateCityMap[c.state] = [];
-                    stateCityMap[c.state].push(c.name.split('/')[0]);
+                    if (!stateHubMap[c.state]) stateHubMap[c.state] = [];
+                    stateHubMap[c.state].push(c);
                 });
 
                 const stateSequence = [...new Set(routeCities.map(c => c.state))];
@@ -234,8 +234,8 @@
                                     seenAlerts.add(key);
                                     alertsFound = true;
                                     // Associate with the first hub found in this state on the route
-                                    const primaryCity = stateCityMap[state][0] || "";
-                                    appendRow(state, primaryCity, alert, tableBody);
+                                    const primaryHub = stateHubMap[state][0];
+                                    appendRow(state, primaryHub, alert, tableBody);
                                 }
                             });
                         }
@@ -320,7 +320,7 @@
             return final;
         }
 
-        function appendRow(state, city, alert, tbody) {
+        function appendRow(state, hub, alert, tbody) {
             // Clean headline to remove redundant time/date info
             const rawHeadline = alert.properties.headline || '';
             const cleanHeadline = rawHeadline
@@ -328,11 +328,15 @@
                 .replace(/(IN EFFECT|REMAINS IN EFFECT|FROM|UNTIL|THROUGH).*/gi, '')
                 .trim();
 
+            const cityName = hub.name.split('/')[0];
+            // Point Forecast link using latitude and longitude is the most reliable "official" detail page
+            const reportUrl = `https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}`;
+
             const row = document.createElement('tr');
             row.className = "border-b border-slate-200 hover:bg-slate-50 transition";
             row.innerHTML = `
                 <td class="p-2 font-black text-blue-900 align-middle text-2xl">${state}</td>
-                <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap">${city}</td>
+                <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap">${cityName}</td>
                 <td class="p-2 align-middle">
                     <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">
                         ${alert.properties.event}
@@ -344,7 +348,7 @@
                 </td>
                 <td class="p-2 align-middle">
                     <div class="flex items-center gap-3 overflow-hidden">
-                         <a href="https://forecast.weather.gov/showsigwx.php?product=${alert.properties.id}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View</a>
+                         <a href="${reportUrl}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View</a>
                          <p class="font-bold text-slate-800 text-xl overflow-hidden text-ellipsis whitespace-nowrap" title="${rawHeadline.replace(/"/g, '&quot;')}">
                             ${cleanHeadline || rawHeadline}
                          </p>
