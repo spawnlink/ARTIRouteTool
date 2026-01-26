@@ -36,7 +36,7 @@
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans">
 
-    <!-- Container updated to max-w-full to expand width-wise -->
+    <!-- Full-width Container -->
     <div class="max-w-full mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
         <div class="bg-blue-900 p-6 text-white">
             <h1 class="text-3xl font-bold flex items-center gap-2">
@@ -46,6 +46,11 @@
         </div>
 
         <div class="p-6">
+            <div id="dataLoadingStatus" class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 font-medium text-sm flex items-center gap-3">
+                <div class="loader !w-4 !h-4 !border-2"></div>
+                Initializing high-density city database from cloud source...
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1 text-lg">Start City (e.g., Kalona, IA)</label>
@@ -57,8 +62,8 @@
                 </div>
             </div>
 
-            <button onclick="calculateAndCheck()" id="checkBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-5 px-6 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-2xl">
-                <span>Analyze Route Alerts</span>
+            <button onclick="calculateAndCheck()" id="checkBtn" disabled class="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-5 px-6 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-2xl">
+                <span id="btnText">Loading Database...</span>
             </button>
 
             <!-- Status Console -->
@@ -122,6 +127,66 @@
         let map = null;
         let routeLayer = null;
         let markerLayer = null;
+        let hubs = []; // Dynamically populated from Google Sheets
+
+        const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=0&single=true&output=csv";
+
+        // Load data on window startup
+        window.onload = async () => {
+            await loadCityData();
+        };
+
+        async function loadCityData() {
+            const statusEl = document.getElementById('dataLoadingStatus');
+            const checkBtn = document.getElementById('checkBtn');
+            const btnText = document.getElementById('btnText');
+
+            try {
+                const response = await fetch(csvUrl);
+                if (!response.ok) throw new Error("Failed to reach database");
+                const csvText = await response.text();
+                
+                // Parse CSV (Expected headers: city_ascii, state_id, lat, lng, population)
+                const lines = csvText.split('\n');
+                const midwestStates = ['IA', 'WI', 'MN', 'NE', 'MO', 'IL'];
+                
+                hubs = lines.slice(1).map(line => {
+                    const parts = line.split(',');
+                    if (parts.length < 5) return null;
+                    
+                    const name = parts[0].replace(/"/g, '').trim();
+                    const state = parts[1].replace(/"/g, '').trim();
+                    const lat = parseFloat(parts[2]);
+                    const lon = parseFloat(parts[3]);
+                    const pop = parseInt(parts[4]) || 0;
+
+                    // Apply Logic:
+                    // Priority states: all
+                    // Others: population >= 1,000
+                    if (midwestStates.includes(state) || pop >= 1000) {
+                        return { name, state, lat, lon, pop };
+                    }
+                    return null;
+                }).filter(h => h !== null);
+
+                statusEl.innerHTML = `✅ Database Loaded: ${hubs.length.toLocaleString()} transit points active.`;
+                statusEl.className = "mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 font-medium text-sm flex items-center gap-3";
+                
+                checkBtn.disabled = false;
+                btnText.innerText = "Analyze Route Alerts";
+                
+                console.log(`Loaded ${hubs.length} hubs from external source.`);
+            } catch (err) {
+                console.error(err);
+                statusEl.innerHTML = `❌ Error loading city database. Using minimal backup.`;
+                statusEl.className = "mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 font-medium text-sm flex items-center gap-3";
+                checkBtn.disabled = false;
+                btnText.innerText = "Analyze Route (Backup Mode)";
+                
+                // Fallback minimal list in case of network failure
+                hubs = [{ name: "Kalona", state: "IA", lat: 41.4770, lon: -91.7063 }];
+            }
+        }
 
         function log(msg, isError = false) {
             console.log(`[TRIP] ${msg}`);
@@ -134,49 +199,6 @@
             lines.appendChild(entry);
             logBox.scrollTop = logBox.scrollHeight;
         }
-
-        const hubs = [
-            { name: "Kalona/Iowa City, IA", state: "IA", lat: 41.66, lon: -91.53 },
-            { name: "Des Moines, IA", state: "IA", lat: 41.58, lon: -93.60 },
-            { name: "Davenport, IA", state: "IA", lat: 41.52, lon: -90.57 },
-            { name: "Kansas City, MO", state: "MO", lat: 39.09, lon: -94.57 },
-            { name: "St. Joseph, MO", state: "MO", lat: 39.76, lon: -94.84 },
-            { name: "Columbia, MO", state: "MO", lat: 38.95, lon: -92.33 },
-            { name: "St. Louis, MO", state: "MO", lat: 38.62, lon: -90.19 },
-            { name: "Springfield, MO", state: "MO", lat: 37.20, lon: -93.29 },
-            { name: "Joplin, MO", state: "MO", lat: 37.08, lon: -94.51 },
-            { name: "Oklahoma City, OK", state: "OK", lat: 35.46, lon: -97.51 },
-            { name: "Tulsa, OK", state: "OK", lat: 36.15, lon: -95.99 },
-            { name: "McAlester, OK", state: "OK", lat: 34.93, lon: -95.76 },
-            { name: "Dallas/Fort Worth, TX", state: "TX", lat: 32.77, lon: -96.79 },
-            { name: "Denton, TX", state: "TX", lat: 33.21, lon: -97.13 },
-            { name: "Shreveport, LA", state: "LA", lat: 32.52, lon: -93.75 },
-            { name: "Texarkana, TX/AR", state: "AR", lat: 33.42, lon: -94.04 },
-            { name: "Little Rock, AR", state: "AR", lat: 34.74, lon: -92.28 },
-            { name: "Wichita, KS", state: "KS", lat: 37.68, lon: -97.33 },
-            { name: "Memphis, TN", state: "TN", lat: 35.14, lon: -90.04 },
-            { name: "Nashville, TN", state: "TN", lat: 36.16, lon: -86.78 },
-            { name: "Atlanta, GA", state: "GA", lat: 33.74, lon: -84.38 },
-            { name: "Birmingham, AL", state: "AL", lat: 33.51, lon: -86.81 },
-            { name: "Jackson, MS", state: "MS", lat: 32.29, lon: -90.18 },
-            { name: "Charlotte, NC", state: "NC", lat: 35.22, lon: -80.84 },
-            { name: "Greenville, SC", state: "SC", lat: 34.85, lon: -82.39 },
-            { name: "York, PA", state: "PA", lat: 39.96, lon: -76.72 },
-            { name: "Harrisburg, PA", state: "PA", lat: 40.27, lon: -76.88 },
-            { name: "Philadelphia, PA", state: "PA", lat: 39.95, lon: -75.16 },
-            { name: "Baltimore, MD", state: "MD", lat: 39.29, lon: -76.61 },
-            { name: "Denver, CO", state: "CO", lat: 39.73, lon: -104.99 },
-            { name: "Albuquerque, NM", state: "NM", lat: 35.08, lon: -106.65 },
-            { name: "Phoenix, AZ", state: "AZ", lat: 33.44, lon: -112.07 },
-            { name: "Salt Lake City, UT", state: "UT", lat: 40.76, lon: -111.89 },
-            { name: "Las Vegas, NV", state: "NV", lat: 36.17, lon: -115.13 },
-            { name: "Los Angeles, CA", state: "CA", lat: 34.05, lon: -118.24 },
-            { name: "Sacramento, CA", state: "CA", lat: 38.58, lon: -121.49 },
-            { name: "Seattle, WA", state: "WA", lat: 47.60, lon: -122.33 },
-            { name: "Chicago, IL", state: "IL", lat: 41.87, lon: -87.62 },
-            { name: "Indianapolis, IN", state: "IN", lat: 39.76, lon: -86.15 },
-            { name: "Omaha, NE", state: "NE", lat: 41.25, lon: -95.93 }
-        ];
 
         async function geocode(location) {
             log(`Geocoding: ${location}...`);
@@ -191,8 +213,13 @@
                 const data = await response.json();
                 if (data && data.length > 0) {
                     const res = data[0];
+                    const displayName = res.display_name;
+                    const manualStateMatch = location.match(/\b([A-Z]{2})\b/i);
+                    const state = manualStateMatch ? manualStateMatch[1].toUpperCase() : "US";
+
                     return {
-                        name: location,
+                        name: location.split(',')[0].trim(),
+                        state: state,
                         lat: parseFloat(res.lat),
                         lon: parseFloat(res.lon),
                         display: res.display_name
@@ -203,13 +230,14 @@
             }
             log("Attempting local database match...");
             const inputLower = location.toLowerCase();
-            const stateMatch = location.match(/\b([A-Z]{2})\b/i);
-            const stateCode = stateMatch ? stateMatch[1].toUpperCase() : null;
+            const manualStateMatch = location.match(/\b([A-Z]{2})\b/i);
+            const stateCode = manualStateMatch ? manualStateMatch[1].toUpperCase() : null;
+
             let localHub = hubs.find(h => inputLower.includes(h.name.toLowerCase().split('/')[0]));
             if (!localHub && stateCode) localHub = hubs.find(h => h.state === stateCode);
             if (localHub) {
                 log(`Using closest hub: ${localHub.name}`);
-                return { ...localHub };
+                return { ...localHub, lon: localHub.lon || localHub.lng };
             }
             return null;
         }
@@ -258,73 +286,78 @@
                 }
 
                 log("Analyzing corridor vector...");
-                const routeCities = determineCorridor(startPoint, endPoint);
-                log(`Path identified with ${routeCities.length} major segments.`);
+                const corridorHubs = determineCorridor(startPoint, endPoint);
+                const routePoints = [startPoint, ...corridorHubs, endPoint];
                 
-                routeCities.forEach((c, i) => {
+                const finalRoutePoints = [];
+                const seenNames = new Set();
+                routePoints.forEach(p => {
+                    const shortName = p.name.split('/')[0].toLowerCase();
+                    if (!seenNames.has(shortName)) {
+                        seenNames.add(shortName);
+                        finalRoutePoints.push(p);
+                    }
+                });
+
+                log(`Path identified with ${finalRoutePoints.length} total points.`);
+                
+                finalRoutePoints.forEach((c, i) => {
                     const span = document.createElement('span');
                     span.className = "bg-blue-100 text-blue-800 px-3 py-1 rounded text-base font-bold border border-blue-200";
                     span.innerText = c.name;
                     pathDisplay.appendChild(span);
-                    if (i < routeCities.length - 1) {
+                    if (i < finalRoutePoints.length - 1) {
                         pathDisplay.innerHTML += `<span class="text-slate-400 mx-1">→</span>`;
                     }
                 });
                 routeSummary.classList.remove('hidden');
 
-                // Draw Map
                 initMap();
-                drawRouteMap(startPoint, endPoint, routeCities);
+                drawRouteMap(finalRoutePoints);
 
                 const seenAlerts = new Set();
-                let alertsFound = false;
 
-                for (let i = 0; i < routeCities.length; i++) {
-                    const hub = routeCities[i];
-                    log(`Polling alerts for ${hub.name}...`);
-                    let cityAlertsFoundForThisHub = false;
+                for (let i = 0; i < finalRoutePoints.length; i++) {
+                    const point = finalRoutePoints[i];
+                    log(`Polling alerts for ${point.name}...`);
+                    let cityAlertsFound = false;
                     
                     try {
-                        const response = await fetch(`https://api.weather.gov/alerts/active?point=${hub.lat},${hub.lon}`);
+                        const response = await fetch(`https://api.weather.gov/alerts/active?point=${point.lat},${point.lon}`);
                         if (!response.ok) throw new Error("Point request failed");
                         const data = await response.json();
 
                         if (data.features && data.features.length > 0) {
                             const filtered = data.features.filter(f => {
                                 const e = f.properties.event.toLowerCase();
-                                return e.includes('winter') || e.includes('ice') || e.includes('snow') || e.includes('cold') || e.includes('blizzard') || e.includes('sleet');
+                                return e.includes('winter') || e.includes('ice') || e.includes('snow') || e.includes('cold') || e.includes('blizzard') || e.includes('sleet') || e.includes('wind');
                             });
 
                             if (filtered.length > 0) {
-                                log(`Found ${filtered.length} relevant alerts for ${hub.name}`);
-                                cityAlertsFoundForThisHub = true;
-                                alertsFound = true;
+                                log(`Found ${filtered.length} relevant alerts for ${point.name}`);
+                                cityAlertsFound = true;
                             }
 
                             filtered.forEach(alert => {
-                                const key = `${hub.name}-${alert.properties.event}-${alert.properties.headline}`;
+                                const key = `${point.name}-${alert.properties.event}-${alert.properties.headline}`;
                                 if (!seenAlerts.has(key)) {
                                     seenAlerts.add(key);
-                                    appendRow(hub, alert, tableBody);
+                                    appendRow(point, alert, tableBody);
                                 }
                             });
                         }
                     } catch (e) {
-                        log(`Warning: Failed to fetch data for ${hub.name}.`, true);
+                        log(`Warning: Failed to fetch data for ${point.name}.`, true);
                     }
 
-                    // User Request: If this is the START or END city and no reports exist, show specific line
-                    if (!cityAlertsFoundForThisHub && (i === 0 || i === routeCities.length - 1)) {
-                        appendEmptyRow(hub, tableBody);
+                    // START or END city with no reports: show "no reports issued" line
+                    if (!cityAlertsFound && (i === 0 || i === finalRoutePoints.length - 1)) {
+                        appendEmptyRow(point, tableBody);
                     }
                 }
 
                 document.getElementById('timestamp').innerText = `Updated: ${new Date().toLocaleTimeString()}`;
-                
-                // Note: Always showing resultsArea now because we always show start/end rows
                 resultsArea.classList.remove('hidden');
-                
-                // Final map refresh to ensure markers are visible after results show
                 setTimeout(() => map.invalidateSize(), 200);
 
             } catch (err) {
@@ -341,46 +374,42 @@
             const magSq = vx * vx + vy * vy;
 
             let corridor = hubs.map(h => {
-                const hx = h.lon - start.lon;
+                const hx = (h.lon || h.lng) - start.lon;
                 const hy = h.lat - start.lat;
                 const t = (hx * vx + hy * vy) / magSq;
                 const projX = start.lon + t * vx;
                 const projY = start.lat + t * vy;
-                const perpDist = Math.sqrt(Math.pow(h.lon - projX, 2) + Math.pow(h.lat - projY, 2));
-                return { ...h, t, perpDist };
+                const perpDist = Math.sqrt(Math.pow((h.lon || h.lng) - projX, 2) + Math.pow(h.lat - projY, 2));
+                return { ...h, t, perpDist, lon: (h.lon || h.lng) };
             });
 
-            // Tighten corridor: perpDist < 1.2 (approx. 80 miles)
-            corridor = corridor.filter(h => h.t >= -0.05 && h.t <= 1.05 && h.perpDist < 1.2);
+            // Filtering logic: progress between 5% and 95% and within 80 miles of center line
+            corridor = corridor.filter(h => h.t >= 0.05 && h.t <= 0.95 && h.perpDist < 1.2);
             corridor.sort((a, b) => a.t - b.t);
 
-            const final = [];
+            const unique = [];
             const seen = new Set();
             corridor.forEach(c => {
-                if(!seen.has(c.name)) {
-                    seen.add(c.name);
-                    final.push(c);
+                const sn = c.name.split('/')[0].toLowerCase();
+                if(!seen.has(sn)) {
+                    seen.add(sn);
+                    unique.push(c);
                 }
             });
 
-            if (final.length > 7) {
-                const step = (final.length - 1) / 6;
+            if (unique.length > 7) {
+                const step = (unique.length - 1) / 6;
                 const pruned = [];
-                for(let i=0; i<7; i++) pruned.push(final[Math.round(i * step)]);
+                for(let i=0; i<7; i++) pruned.push(unique[Math.round(i * step)]);
                 return pruned;
             }
-            return final;
+            return unique;
         }
 
-        function drawRouteMap(start, end, corridor) {
+        function drawRouteMap(points) {
             routeLayer.clearLayers();
             markerLayer.clearLayers();
-
-            const latlngs = [
-                [start.lat, start.lon],
-                ...corridor.map(c => [c.lat, c.lon]),
-                [end.lat, end.lon]
-            ];
+            const latlngs = points.map(p => [p.lat, p.lon]);
 
             L.polyline(latlngs, {
                 color: '#3b82f6',
@@ -389,13 +418,13 @@
                 opacity: 0.8
             }).addTo(routeLayer);
 
-            latlngs.forEach((ll, i) => {
+            points.forEach((p, i) => {
                 const isStart = i === 0;
-                const isEnd = i === latlngs.length - 1;
-                const name = isStart ? "START" : (isEnd ? "END" : corridor[i-1].name.split('/')[0]);
+                const isEnd = i === points.length - 1;
+                const name = isStart ? "START" : (isEnd ? "END" : p.name.split('/')[0]);
                 const color = isStart ? '#10b981' : (isEnd ? '#ef4444' : '#3b82f6');
                 
-                L.circleMarker(ll, {
+                L.circleMarker([p.lat, p.lon], {
                     radius: isStart || isEnd ? 8 : 5,
                     fillColor: color,
                     color: "#fff",
@@ -405,6 +434,7 @@
                 }).addTo(markerLayer).bindTooltip(name, { permanent: true, direction: 'top', offset: [0, -10] });
             });
 
+            // Consistent Zoom Level 5 for regional context
             map.fitBounds(L.latLngBounds(latlngs), { 
                 padding: [150, 150], 
                 maxZoom: 5 
@@ -419,7 +449,7 @@
             const row = document.createElement('tr');
             row.className = "border-b border-slate-200 hover:bg-slate-50 transition";
             row.innerHTML = `
-                <td class="p-2 font-black text-blue-900 align-middle text-2xl w-28">${hub.state}</td>
+                <td class="p-2 font-black text-blue-900 align-middle text-2xl w-28 uppercase">${hub.state || 'US'}</td>
                 <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap w-48">${cityName}</td>
                 <td class="p-2 align-middle w-40">
                     <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span>
@@ -430,7 +460,7 @@
                 </td>
                 <td class="p-2 align-middle">
                     <div class="flex items-center gap-3 overflow-hidden">
-                         <a href="${reportUrl}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View</a>
+                         <a href="${reportUrl}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View Link</a>
                          <p class="font-bold text-slate-800 text-xl overflow-hidden text-ellipsis whitespace-nowrap" title="${rawHeadline.replace(/"/g, '&quot;')}">${cleanHeadline || rawHeadline}</p>
                     </div>
                 </td>
@@ -438,14 +468,13 @@
             tbody.appendChild(row);
         }
 
-        // Helper to append a row when no reports are active for a specific city
         function appendEmptyRow(hub, tbody) {
             const cityName = hub.name.split('/')[0];
             const reportUrl = `https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}`;
             const row = document.createElement('tr');
             row.className = "border-b border-slate-200 bg-slate-50 opacity-75";
             row.innerHTML = `
-                <td class="p-2 font-black text-slate-400 align-middle text-2xl w-28">${hub.state}</td>
+                <td class="p-2 font-black text-slate-400 align-middle text-2xl w-28 uppercase">${hub.state || 'US'}</td>
                 <td class="p-2 font-bold text-slate-400 align-middle text-xl w-48">${cityName}</td>
                 <td class="p-2 align-middle w-40 text-center">
                     <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter bg-slate-200 text-slate-500">None</span>
@@ -475,6 +504,7 @@
             const d = new Date(str);
             const hour = d.getHours();
             let period = "Night";
+            // Normalizing precise hours to broad trucking periods
             if (hour >= 5 && hour < 12) period = "Morning";
             else if (hour >= 12 && hour < 17) period = "Noon";
             const datePart = d.toLocaleDateString([], {month: 'short', day: 'numeric'});
