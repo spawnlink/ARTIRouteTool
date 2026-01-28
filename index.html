@@ -21,12 +21,11 @@
             vertical-align: middle;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* Ensure table layout is fixed to respect truncation */
         table { table-layout: fixed; width: 100%; border-collapse: collapse; }
         th, td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
         #map {
-            height: 450px;
+            height: 550px;
             width: 100%;
             border-radius: 0.75rem;
             border: 1px solid #e2e8f0;
@@ -49,65 +48,67 @@
         }
 
         .nearest-cat-row {
-            background-color: #fffbeb !important; /* Soft amber */
+            background-color: #fffbeb !important;
             border-left: 10px solid #f59e0b !important;
-            box-shadow: inset 0 0 10px rgba(245, 158, 11, 0.05);
-        }
-
-        .road-label {
-            font-size: 10px;
-            font-weight: bold;
-            color: #1e40af;
-            text-transform: uppercase;
         }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans">
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-900">
 
-    <!-- Full-width Container -->
     <div class="max-w-full mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
         <div class="bg-blue-900 p-6 text-white">
             <h1 class="text-3xl font-bold flex items-center gap-2">
                 🚀 Smart-Route Weather System
             </h1>
-            <p class="text-blue-100 text-base mt-1 text-balance">Highway corridor analysis. Uses OSRM for interstate routing with integrated CAT scale & weather detection.</p>
+            <p class="text-blue-100 text-base mt-1">High-Precision Logistics: 1mi Sampling, 3mi Toll Catch, 5-Axle Rate Processing.</p>
         </div>
 
         <div class="p-6">
             <div id="dataLoadingStatus" class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 font-medium text-sm flex items-center gap-3">
                 <div class="loader !w-4 !h-4 !border-2"></div>
-                Initializing cloud city database and CAT scale locations...
+                Syncing global location and gantry databases...
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1 text-lg">Start City (e.g., Kalona, IA)</label>
-                    <input type="text" id="startInput" placeholder="City, State" class="w-full border p-4 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-xl">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1 text-lg">Start City</label>
+                    <input type="text" id="startInput" placeholder="Kalona, IA" class="w-full border p-4 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-xl">
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1 text-lg">End City (e.g., Denver, CO)</label>
-                    <input type="text" id="endInput" placeholder="City, State" class="w-full border p-4 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-xl">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1 text-lg">End City</label>
+                    <input type="text" id="endInput" placeholder="York, PA" class="w-full border p-4 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-xl">
                 </div>
             </div>
 
             <button onclick="calculateAndCheck()" id="checkBtn" disabled class="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-5 px-6 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-2xl">
-                <span id="btnText">Loading Database...</span>
+                <span id="btnText">Initializing...</span>
             </button>
 
-            <!-- Status Console -->
+            <!-- Debug Window -->
             <div id="debugLog" class="mt-4 p-3 bg-black text-green-400 text-xs font-mono rounded-lg h-24 overflow-y-auto hidden">
-                <div class="mb-1 text-white border-b border-gray-700 pb-1 font-bold">Logistics Analysis Progress:</div>
                 <div id="logLines"></div>
             </div>
 
             <div id="loading" class="hidden mt-6 p-6 bg-blue-50 text-blue-700 rounded-xl text-center border border-blue-100">
                 <div class="loader mr-3"></div> 
-                <span id="loadingText" class="font-bold text-xl">Mapping highway geometry and polling weather services...</span>
+                <span id="loadingText" class="font-bold text-xl">Intersecting gantry coordinates with high-resolution pathing...</span>
             </div>
 
             <div id="routeSummary" class="hidden mt-6 mb-4 p-4 bg-slate-50 border rounded-lg flex flex-wrap gap-2 items-center text-lg text-slate-600">
                 <span class="font-bold text-slate-800">Highway Path:</span>
                 <div id="pathDisplay" class="flex flex-wrap gap-1 items-center"></div>
+            </div>
+
+            <!-- Toll Summary Section -->
+            <div id="tollSection" class="hidden mb-6 bg-purple-50 border border-purple-200 rounded-lg p-4 shadow-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-lg font-bold text-purple-900 flex items-center gap-2">
+                        <span class="text-xl">💰</span> Pay-Per-Gantry Toll Summary
+                    </h3>
+                    <span id="totalTollCost" class="bg-purple-600 text-white px-4 py-1.5 rounded-full text-lg font-bold"></span>
+                </div>
+                <div id="tollList" class="text-sm text-purple-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1 max-h-48 overflow-y-auto mt-2">
+                </div>
             </div>
 
             <div id="resultsArea" class="hidden">
@@ -120,40 +121,29 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-100 border-b-2 border-slate-200">
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-28 text-lg">State</th>
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-48 text-lg">City</th>
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-40 text-lg text-center">Type</th>
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 w-64 text-lg">Timing</th>
-                                <th class="p-2 text-xs font-black uppercase tracking-widest text-slate-500 text-lg">Hazard Details</th>
+                                <th class="p-2 text-xs font-black uppercase text-slate-500 w-28 text-lg">State</th>
+                                <th class="p-2 text-xs font-black uppercase text-slate-500 w-48 text-lg">City</th>
+                                <th class="p-2 text-xs font-black uppercase text-slate-500 w-40 text-lg text-center">Type</th>
+                                <th class="p-2 text-xs font-black uppercase text-slate-500 w-64 text-lg">Timing</th>
+                                <th class="p-2 text-xs font-black uppercase text-slate-500 text-lg">Hazard Details</th>
                             </tr>
                         </thead>
-                        <tbody id="alertTableBody">
-                            <!-- Results inject here -->
-                        </tbody>
+                        <tbody id="alertTableBody"></tbody>
                     </table>
                 </div>
                 
-                <!-- Map Visualization -->
                 <div id="mapSection" class="mt-8">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Road Map Visualizer</h3>
+                    <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Infrastructure Visualization</h3>
                     <div id="map" class="shadow-inner"></div>
-                    <div class="flex justify-center gap-6 mt-3 text-xs">
+                    <div class="flex justify-center gap-4 mt-3 text-xs flex-wrap">
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#10b981]"></span> Start</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#ef4444]"></span> Destination</div>
-                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#3b82f6]"></span> Hub Point</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#3b82f6]"></span> Hub</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#facc15] shadow-[0_0_5px_#facc15]"></span> CAT Scale</div>
-                        <div class="flex items-center gap-1"><span class="text-blue-600 font-bold">━</span> Interstate Route</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#a855f7]"></span> Toll Gantry</div>
                     </div>
                 </div>
-
-                <div id="noAlerts" class="hidden p-16 text-center text-gray-500 italic bg-slate-50 rounded-xl mt-4 border-2 border-dashed">
-                    No active NWS alerts found along this highway corridor.
-                </div>
             </div>
-        </div>
-
-        <div class="bg-slate-50 p-4 text-[10px] text-gray-400 text-center uppercase tracking-widest">
-            Interstate Logic via OSRM • NWS Point APIs • CAT Scale Enroute Optimization
         </div>
     </div>
 
@@ -162,95 +152,101 @@
         let routeLayer = null;
         let markerLayer = null;
         let hubs = []; 
+        let tolls = [];
 
-        const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=0&single=true&output=csv";
+        const cityCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=0&single=true&output=csv";
+        const tollCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=1793109645&single=true&output=csv";
 
         window.onload = async () => {
-            await loadCityData();
+            await loadAllData();
             
             const endInput = document.getElementById('endInput');
             endInput.addEventListener("keypress", function(event) {
                 if (event.key === "Enter") {
                     event.preventDefault();
-                    const btn = document.getElementById('checkBtn');
-                    if (!btn.disabled) {
-                        calculateAndCheck();
-                    }
+                    if (!document.getElementById('checkBtn').disabled) calculateAndCheck();
                 }
             });
         };
 
-        // Advanced CSV Parser to handle quotes/commas correctly
         function parseCSVLine(line) {
             const result = [];
             let cell = '';
             let inQuotes = false;
             for (let i = 0; i < line.length; i++) {
                 const char = line[i];
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
+                if (char === '"') inQuotes = !inQuotes;
+                else if (char === ',' && !inQuotes) {
                     result.push(cell);
                     cell = '';
-                } else {
-                    cell += char;
-                }
+                } else cell += char;
             }
             result.push(cell);
             return result;
         }
 
-        async function loadCityData() {
+        async function loadAllData() {
             const statusEl = document.getElementById('dataLoadingStatus');
             const checkBtn = document.getElementById('checkBtn');
-            const btnText = document.getElementById('btnText');
 
             try {
-                const response = await fetch(csvUrl);
-                if (!response.ok) throw new Error("Failed to reach database");
-                const csvText = await response.text();
+                // 1. Load Cities
+                const cityRes = await fetch(cityCsvUrl);
+                const cityText = await cityRes.text();
+                const cityLines = cityText.split(/\r?\n/).filter(l => l.trim().length > 0);
                 
-                const lines = csvText.split(/\r?\n/);
-                const midwestStates = ['IA', 'WI', 'MN', 'NE', 'MO', 'IL'];
-                
-                hubs = lines.slice(1).map(line => {
-                    if (!line.trim()) return null;
+                hubs = cityLines.slice(1).map(line => {
                     const parts = parseCSVLine(line);
-                    if (parts.length < 5) return null;
-                    
+                    if (parts.length < 4) return null;
                     const name = parts[0].trim();
                     const state = parts[1].trim();
                     const lat = parseFloat(parts[2]);
                     const lon = parseFloat(parts[3]);
                     const pop = parseInt(parts[4]) || 0;
+                    const isCatScale = parts[5] ? (parts[5].toLowerCase().includes('true') || parts[5].trim() === '1') : false;
+                    return { name, state, lat, lon, pop, isCatScale };
+                }).filter(h => h !== null && !isNaN(h.lat));
+
+                // 2. Load Tolls
+                const tollRes = await fetch(tollCsvUrl);
+                const tollText = await tollRes.text();
+                if (tollText) {
+                    const tollLines = tollText.split(/\r?\n/).filter(l => l.trim().length > 0);
+                    const headers = parseCSVLine(tollLines[0]).map(h => h.trim().toLowerCase());
                     
-                    // Check for "True" string specifically for CAT scale
-                    const isCatScale = parts[5] ? parts[5].trim().toLowerCase() === 'true' : false;
+                    const latIdx = headers.findIndex(h => h.includes('lat'));
+                    const lonIdx = headers.findIndex(h => h.includes('lon') || h.includes('lng') || h.includes('long'));
+                    const nameIdx = headers.indexOf('name') !== -1 ? headers.indexOf('name') : 0;
+                    // Detect "5-Axle Rate" column specifically
+                    const rateIdx = headers.findIndex(h => h.includes('axle') || h.includes('rate') || h.includes('price') || h.includes('cost'));
 
-                    if (isCatScale) {
-                        return { name, state, lat, lon, pop, isCatScale };
-                    }
+                    tolls = tollLines.slice(1).map(line => {
+                        const parts = parseCSVLine(line);
+                        if (parts.length <= Math.max(latIdx, lonIdx)) return null;
+                        const lat = parseFloat(parts[latIdx]);
+                        const lon = parseFloat(parts[lonIdx]);
+                        if (isNaN(lat) || isNaN(lon)) return null;
+                        
+                        const rawPrice = parts[rateIdx] || "0";
+                        const price = parseFloat(rawPrice.replace(/[^0-9.]/g, '')) || 0;
 
-                    if (midwestStates.includes(state) || pop >= 1000) {
-                        return { name, state, lat, lon, pop, isCatScale };
-                    }
-                    return null;
-                }).filter(h => h !== null);
+                        return { name: parts[nameIdx]?.trim() || "Toll", lat, lon, price };
+                    }).filter(t => t !== null);
+                }
 
-                statusEl.innerHTML = `✅ Network Sync: ${hubs.length.toLocaleString()} locations loaded.`;
+                statusEl.innerHTML = `✅ ${hubs.length.toLocaleString()} locations & ${tolls.length} gantries synced. Check spreadsheet for 5-Axle data density.`;
                 statusEl.className = "mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 font-medium text-sm flex items-center gap-3";
+                checkBtn.disabled = false;
+                document.getElementById('btnText').innerText = "Analyze Route Alerts";
                 
-                checkBtn.disabled = false;
-                btnText.innerText = "Analyze Route Alerts";
+                initMap();
+                drawGlobalTolls();
             } catch (err) {
-                log(`Database Error: ${err.message}`, true);
-                checkBtn.disabled = false;
-                btnText.innerText = "Analyze Route (Static Mode)";
+                log(`Sync Error: ${err.message}`, true);
             }
         }
 
         function log(msg, isError = false) {
-            console.log(`[LOG] ${msg}`);
             const logBox = document.getElementById('debugLog');
             const lines = document.getElementById('logLines');
             logBox.classList.remove('hidden');
@@ -262,48 +258,66 @@
         }
 
         async function geocode(location) {
-            log(`Geocoding: ${location}...`);
-            const manualStateMatch = location.match(/\b([A-Z]{2})\b/i);
-            const stateCode = manualStateMatch ? manualStateMatch[1].toUpperCase() : null;
-
+            log(`Locating: ${location}...`);
             try {
-                // Force state search to avoid resolving to incorrect states (Denver IA vs Denver CO)
-                const query = stateCode ? `${location}` : location;
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=us&limit=1`, { 
-                    headers: { 'Accept': 'application/json' }
-                });
-                const data = await response.json();
-                if (data && data.length > 0) {
-                    const res = data[0];
-                    return {
-                        name: location.split(',')[0].trim(),
-                        state: stateCode || "US",
-                        lat: parseFloat(res.lat),
-                        lon: parseFloat(res.lon)
-                    };
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&countrycodes=us&limit=1`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        return { name: location.split(',')[0].trim(), lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                    }
                 }
-            } catch (err) { log(`Geocoder Service Error: ${err.message}`, true); }
+            } catch (err) {}
 
-            // Local fallback
-            const cityPart = location.split(',')[0].toLowerCase().trim();
-            let localHub = hubs.find(h => 
-                h.name.toLowerCase() === cityPart && 
-                (!stateCode || h.state === stateCode)
-            );
-            
-            if (localHub) return { ...localHub };
+            // Fuzzy Fallback
+            const query = location.toLowerCase();
+            const match = hubs.find(h => query.includes(h.name.toLowerCase()) && (!query.includes(',') || query.includes(h.state.toLowerCase())));
+            if (match) return match;
             return null;
         }
 
         function initMap() {
             if (!map) {
                 map = L.map('map').setView([39.8283, -98.5795], 4);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap'
-                }).addTo(map);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
                 routeLayer = L.layerGroup().addTo(map);
                 markerLayer = L.layerGroup().addTo(map);
             }
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 3963; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        // Resample every 1 mile for ultra-precision
+        function interpolatePath(coords, intervalMiles) {
+            const densePath = [coords[0]];
+            for (let i = 0; i < coords.length - 1; i++) {
+                const p1 = coords[i], p2 = coords[i+1];
+                const d = getDistance(p1[1], p1[0], p2[1], p2[0]);
+                if (d > intervalMiles) {
+                    const steps = Math.floor(d / intervalMiles);
+                    for (let j = 1; j <= steps; j++) {
+                        const f = (j * intervalMiles) / d;
+                        densePath.push([p1[0] + f * (p2[0] - p1[0]), p1[1] + f * (p2[1] - p1[1])]);
+                    }
+                }
+                densePath.push(p2);
+            }
+            return densePath;
+        }
+
+        function drawGlobalTolls() {
+            if (!markerLayer) return;
+            tolls.forEach(t => {
+                L.circleMarker([t.lat, t.lon], {
+                    radius: 4, fillColor: '#a855f7', color: "#fff", weight: 1, opacity: 0.6, fillOpacity: 0.6
+                }).addTo(markerLayer).bindTooltip(`${t.name} ($${t.price.toFixed(2)})`);
+            });
         }
 
         async function calculateAndCheck() {
@@ -311,261 +325,202 @@
             const endStr = document.getElementById('endInput').value.trim();
             if (!startStr || !endStr) return;
 
-            const loading = document.getElementById('loading');
-            const resultsArea = document.getElementById('resultsArea');
-            const tableBody = document.getElementById('alertTableBody');
-            const routeSummary = document.getElementById('routeSummary');
-            const pathDisplay = document.getElementById('pathDisplay');
+            const loading = document.getElementById('loading'), resArea = document.getElementById('resultsArea');
+            const tollSection = document.getElementById('tollSection'), tollList = document.getElementById('tollList');
+            const totalTollEl = document.getElementById('totalTollCost');
 
-            loading.classList.remove('hidden');
-            resultsArea.classList.add('hidden');
-            routeSummary.classList.add('hidden');
-            tableBody.innerHTML = '';
-            pathDisplay.innerHTML = '';
+            loading.classList.remove('hidden'); resArea.classList.add('hidden');
+            tollSection.classList.add('hidden');
+            document.getElementById('alertTableBody').innerHTML = '';
+            document.getElementById('pathDisplay').innerHTML = '';
             document.getElementById('logLines').innerHTML = '';
 
             try {
-                const startPoint = await geocode(startStr);
-                const endPoint = await geocode(endStr);
-                if (!startPoint || !endPoint) throw new Error("Start or Destination city not found.");
+                const startPoint = await geocode(startStr), endPoint = await geocode(endStr);
+                if (!startPoint || !endPoint) throw new Error("Location not found.");
 
-                log(`Calculating Interstate Route: ${startPoint.name} to ${endPoint.name}...`);
+                log(`Pathing interstate route...`);
                 const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startPoint.lon},${startPoint.lat};${endPoint.lon},${endPoint.lat}?overview=full&geometries=geojson`;
-                const osrmResponse = await fetch(osrmUrl);
-                const osrmData = await osrmResponse.json();
+                const response = await fetch(osrmUrl);
+                const osrmData = await response.json();
 
-                if (!osrmData.routes || osrmData.routes.length === 0) throw new Error("No highway path identified.");
+                if (!osrmData.routes?.length) throw new Error("Routing service unavailable.");
 
-                const routeGeometry = osrmData.routes[0].geometry;
-                const roadPoints = routeGeometry.coordinates; 
+                const roadCoords = osrmData.routes[0].geometry.coordinates;
+                // Sampling every 0.5 miles to ensure we hit every mainline booth coordinate
+                const densePath = interpolatePath(roadCoords, 0.5); 
 
-                log("Scanning highway path for weather hubs & CAT scales...");
-                const analysis = findHubsAlongPath(roadPoints);
-                const corridorHubs = analysis.corridor;
-                const catScales = analysis.catScales; // Array of top 3 closest scales
-
-                let tablePoints = [startPoint, ...corridorHubs, endPoint];
-                const uniqueTablePoints = [];
-                const seenKeys = new Set();
-                tablePoints.forEach(p => {
-                    const key = `${p.name.toLowerCase()}-${p.state.toLowerCase()}`;
-                    if (!seenKeys.has(key)) {
-                        seenKeys.add(key);
-                        uniqueTablePoints.push(p);
+                // 1. TOLL CALCULATION: Tolls -> Path Intersection (3mi Radius)
+                log(`Analyzing intersects with ${tolls.length} gantry coordinates...`);
+                const detectedTolls = [];
+                const seenTolls = new Set();
+                
+                tolls.forEach(toll => {
+                    let onRoute = false;
+                    for (const rp of densePath) {
+                        // 3.0 Mile catch radius - tight enough to avoid "neighbor highway leaks"
+                        if (getDistance(toll.lat, toll.lon, rp[1], rp[0]) < 3.0) { 
+                            onRoute = true;
+                            break;
+                        }
+                    }
+                    // UNIQUE COORDINATE TRACKING: Ensures each plaza is charged once, 
+                    // but allows multiple plazas on the same Turnpike name.
+                    const coordId = `${toll.lat.toFixed(4)}-${toll.lon.toFixed(4)}`;
+                    if (onRoute && !seenTolls.has(coordId)) {
+                        seenTolls.add(coordId);
+                        detectedTolls.push(toll);
                     }
                 });
 
-                uniqueTablePoints.forEach((c, i) => {
+                if (detectedTolls.length > 0) {
+                    let total = 0;
+                    tollList.innerHTML = '';
+                    detectedTolls.forEach(t => {
+                        total += t.price;
+                        const div = document.createElement('div');
+                        div.className = 'flex justify-between border-b border-purple-100 py-1 px-1';
+                        div.innerHTML = `<span class="truncate pr-2 font-medium">${t.name}</span> <span class="font-bold shrink-0">$${t.price.toFixed(2)}</span>`;
+                        tollList.appendChild(div);
+                    });
+                    totalTollEl.innerText = `Estimated Total Tolls: $${total.toFixed(2)}`;
+                    tollSection.classList.remove('hidden');
+                }
+
+                // 2. Weather/Scales sequencing
+                log("Identifying operational checkpoints...");
+                const analysis = findOperationalPoints(densePath);
+                const finalUnique = [startPoint, ...analysis.weatherHubs, endPoint];
+
+                finalUnique.forEach((c, i) => {
                     const span = document.createElement('span');
                     span.className = `bg-blue-100 text-blue-800 px-3 py-1 rounded text-base font-bold border border-blue-200`;
                     span.innerText = c.name;
-                    pathDisplay.appendChild(span);
-                    if (i < uniqueTablePoints.length - 1) pathDisplay.innerHTML += `<span class="text-slate-400 mx-1">→</span>`;
+                    document.getElementById('pathDisplay').appendChild(span);
+                    if (i < finalUnique.length - 1) document.getElementById('pathDisplay').innerHTML += `<span class="text-slate-400 mx-1">→</span>`;
                 });
-                routeSummary.classList.remove('hidden');
+                document.getElementById('routeSummary').classList.remove('hidden');
 
                 initMap();
-                drawRoadMap(routeGeometry, uniqueTablePoints, catScales);
+                drawRoadMap(osrmData.routes[0].geometry, finalUnique, analysis.top3Scales);
 
-                // TABLE GENERATION
-                
-                // 1. Force top 3 Nearest CAT Scales to the VERY TOP
-                if (catScales.length > 0) {
-                    log(`Detected ${catScales.length} enroute CAT Scales.`);
-                    for (const scale of catScales) {
-                        await processTableRow(scale, tableBody, true);
-                    }
-                }
-
-                // 2. Process rest of the route
-                for (let i = 0; i < uniqueTablePoints.length; i++) {
-                    const isEndpoint = (i === 0 || i === uniqueTablePoints.length - 1);
-                    await processTableRow(uniqueTablePoints[i], tableBody, false, isEndpoint);
+                // Process Report Table
+                for (const s of analysis.top3Scales) await processTableRow(s, document.getElementById('alertTableBody'), true);
+                for (let i = 0; i < finalUnique.length; i++) {
+                    await processTableRow(finalUnique[i], document.getElementById('alertTableBody'), false, i === 0 || i === finalUnique.length - 1);
                 }
 
                 document.getElementById('timestamp').innerText = `Updated: ${new Date().toLocaleTimeString()}`;
-                resultsArea.classList.remove('hidden');
+                resArea.classList.remove('hidden');
                 setTimeout(() => map.invalidateSize(), 200);
 
             } catch (err) {
-                log(`Analysis Error: ${err.message}`, true);
+                log(`Processing Error: ${err.message}`, true);
             } finally {
                 loading.classList.add('hidden');
             }
         }
 
-        async function processTableRow(point, tbody, isScaleRow, isEndpoint = false) {
-            log(`Polling weather for ${point.name}...`);
-            let reportsFound = false;
-            
-            // Retry wrapper for NWS API stability
-            const fetchWithRetry = async (url, retries = 3) => {
-                for (let i = 0; i < retries; i++) {
-                    try {
-                        const res = await fetch(url);
-                        if (res.ok) return res;
-                    } catch (e) { /* ignore retry failure */ }
-                    await new Promise(r => setTimeout(r, 500)); // wait 500ms
-                }
-                return null;
-            };
+        function findOperationalPoints(densePath) {
+            // Weather spacing: target ~100mi, min 50mi
+            const weatherHubs = [], seenHubs = new Set();
+            let currentTotalDist = 0, lastHubDist = 0;
 
+            for (let i = 1; i < densePath.length; i++) {
+                currentTotalDist += getDistance(densePath[i-1][1], densePath[i-1][0], densePath[i][1], densePath[i][0]);
+                if (currentTotalDist - lastHubDist >= 100) {
+                    const rp = densePath[i];
+                    let closest = null, minDist = Infinity;
+                    hubs.forEach(h => {
+                        const d = getDistance(h.lat, h.lon, rp[1], rp[0]);
+                        if (d < 40 && d < minDist) { minDist = d; closest = h; }
+                    });
+                    if (closest) {
+                        const key = `${closest.name.toLowerCase()}`;
+                        if (!seenHubs.has(key)) { seenHubs.add(key); weatherHubs.push(closest); lastHubDist = currentTotalDist; }
+                    }
+                }
+            }
+
+            const scaleMatches = [];
+            hubs.forEach(h => {
+                if (h.isCatScale) {
+                    let minToPath = Infinity, pathIdx = -1;
+                    for (let i = 0; i < densePath.length; i += 5) {
+                        const d = getDistance(h.lat, h.lon, densePath[i][1], densePath[i][0]);
+                        if (d < minToPath) { minToPath = d; pathIdx = i; }
+                    }
+                    if (minToPath < 5.0) scaleMatches.push({ ...h, pathIdx });
+                }
+            });
+            scaleMatches.sort((a, b) => a.pathIdx - b.pathIdx);
+            return { weatherHubs, top3Scales: scaleMatches.slice(0, 3) };
+        }
+
+        async function processTableRow(point, tbody, isScaleRow, isEndpoint = false) {
+            log(`NWS Sync: ${point.name}...`);
+            let reports = false;
             try {
-                // Ensure coordinate precision to avoid API rejection
-                const lat = parseFloat(point.lat).toFixed(4);
-                const lon = parseFloat(point.lon).toFixed(4);
-                
-                const response = await fetchWithRetry(`https://api.weather.gov/alerts/active?point=${lat},${lon}`);
-                
-                if (response && response.ok) {
+                const response = await fetch(`https://api.weather.gov/alerts/active?point=${parseFloat(point.lat).toFixed(4)},${parseFloat(point.lon).toFixed(4)}`);
+                if (response.ok) {
                     const data = await response.json();
-                    if (data.features && data.features.length > 0) {
+                    if (data.features?.length > 0) {
                         const filtered = data.features.filter(f => {
                             const e = f.properties.event.toLowerCase();
-                            // Broad filter to capture all significant road hazards
                             return e.includes('winter') || e.includes('ice') || e.includes('snow') || e.includes('cold') || 
-                                   e.includes('blizzard') || e.includes('sleet') || e.includes('wind') || e.includes('chill') ||
-                                   e.includes('storm') || e.includes('flood') || e.includes('warning') || e.includes('watch') || 
-                                   e.includes('advisory') || e.includes('special weather') || e.includes('fog');
+                                   e.includes('wind') || e.includes('storm') || e.includes('flood') || e.includes('warning') || 
+                                   e.includes('watch') || e.includes('advisory') || e.includes('special weather') || e.includes('fog');
                         });
-
                         if (filtered.length > 0) {
-                            reportsFound = true;
-                            filtered.forEach(alert => {
-                                appendRow(point, alert, tbody, isScaleRow);
-                            });
+                            reports = true;
+                            filtered.forEach(alert => appendRow(point, alert, tbody, isScaleRow));
                         }
                     }
-                } else {
-                    log(`Weather API unavailable for ${point.name}`, true);
                 }
-            } catch (e) { log(`System error for ${point.name}: ${e.message}`, true); }
-
-            if (!reportsFound && (isScaleRow || isEndpoint)) {
-                appendEmptyRow(point, tbody, isScaleRow);
-            }
+            } catch (e) {}
+            if (!reports && (isScaleRow || isEndpoint)) appendEmptyRow(point, tbody, isScaleRow);
         }
 
-        function findHubsAlongPath(roadCoords) {
-            const sampleRate = Math.max(1, Math.floor(roadCoords.length / 100));
-            const sampledPath = roadCoords.filter((_, i) => i % sampleRate === 0);
-            
-            const foundHubs = [];
-            const seenHubs = new Set();
-            let catScalesEnroute = [];
+        function drawRoadMap(geo, routePoints, scales) {
+            routeLayer.clearLayers(); markerLayer.clearLayers();
+            L.geoJSON(geo, { style: { color: '#2563eb', weight: 6, opacity: 0.8 } }).addTo(routeLayer);
 
-            hubs.forEach(h => {
-                let minDist = Infinity;
-                let roadIdx = -1;
-                
-                sampledPath.forEach((rp, idx) => {
-                    const d = Math.sqrt(Math.pow(h.lon - rp[0], 2) + Math.pow(h.lat - rp[1], 2));
-                    if (d < minDist) {
-                        minDist = d;
-                        roadIdx = idx;
-                    }
-                });
+            drawGlobalTolls(); 
 
-                // Proximity ~35 miles
-                if (minDist < 0.5) {
-                    const key = `${h.name.toLowerCase()}-${h.state.toLowerCase()}`;
-                    
-                    if (h.isCatScale) {
-                        catScalesEnroute.push({ ...h, roadProg: roadIdx });
-                    }
-
-                    if (!seenHubs.has(key) && !h.isCatScale) {
-                        seenHubs.add(key);
-                        foundHubs.push({ ...h, roadProg: roadIdx });
-                    }
-                }
-            });
-
-            foundHubs.sort((a, b) => a.roadProg - b.roadProg);
-            
-            // Sort CAT scales by distance along path and pick top 3
-            catScalesEnroute.sort((a, b) => a.roadProg - b.roadProg);
-            const top3Scales = catScalesEnroute.slice(0, 3);
-
-            let pruned = foundHubs;
-            if (foundHubs.length > 6) {
-                const step = (foundHubs.length - 1) / 5;
-                pruned = [];
-                for(let i=0; i<6; i++) pruned.push(foundHubs[Math.round(i * step)]);
-            }
-
-            return { corridor: pruned, catScales: top3Scales };
-        }
-
-        function drawRoadMap(geo, transitPoints, catScales) {
-            routeLayer.clearLayers();
-            markerLayer.clearLayers();
-
-            L.geoJSON(geo, {
-                style: { color: '#2563eb', weight: 6, opacity: 0.8 }
-            }).addTo(routeLayer);
-
-            // Draw transit points (Start, End, Hubs)
-            transitPoints.forEach((p, i) => {
-                const isStart = i === 0;
-                const isEnd = i === transitPoints.length - 1;
-                const color = isStart ? '#10b981' : (isEnd ? '#ef4444' : '#3b82f6');
-                
+            routePoints.forEach((p, i) => {
+                const isEdge = i === 0 || i === routePoints.length - 1;
                 L.circleMarker([p.lat, p.lon], {
-                    radius: isStart || isEnd ? 10 : 5,
-                    fillColor: color,
-                    color: "#fff",
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 1
-                }).addTo(markerLayer).bindTooltip(isStart ? "START" : (isEnd ? "END" : p.name), { 
-                    permanent: true, direction: 'top', offset: [0, -10] 
-                });
+                    radius: isEdge ? 10 : 5, fillColor: isEdge ? (i===0?'#10b981':'#ef4444') : '#3b82f6', 
+                    color: "#fff", weight: 2, opacity: 1, fillOpacity: 1
+                }).addTo(markerLayer).bindTooltip(isEdge ? (i===0?"START":"END") : p.name, { permanent: true, direction: 'top' });
             });
 
-            // Draw CAT Scale markers
-            if (catScales && catScales.length > 0) {
-                catScales.forEach((scale) => {
-                    L.circleMarker([scale.lat, scale.lon], {
-                        radius: 8,
-                        fillColor: '#facc15', // Yellow dot
-                        color: "#fff",
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 1
-                    }).addTo(markerLayer).bindTooltip(`CAT Scale: ${scale.name}`, { 
-                        permanent: false, direction: 'top', offset: [0, -10] 
-                    });
-                });
+            if (scales.length > 0) {
+                const nearest = scales[0];
+                L.circleMarker([nearest.lat, nearest.lon], {
+                    radius: 8, fillColor: '#facc15', color: "#fff", weight: 2.5, opacity: 1, fillOpacity: 1
+                }).addTo(markerLayer).bindTooltip(`⭐ SCALE: ${nearest.name}`, { permanent: true, direction: 'bottom' });
             }
 
-            map.fitBounds(L.latLngBounds(geo.coordinates.map(c => [c[1], c[0]])), { 
-                padding: [100, 100], maxZoom: 5 
-            });
+            map.fitBounds(L.latLngBounds(geo.coordinates.map(c => [c[1], c[0]])), { padding: [80, 80], maxZoom: 5 });
         }
 
         function appendRow(hub, alert, tbody, isScaleRow) {
-            const rawHeadline = alert.properties.headline || '';
-            const cleanHeadline = rawHeadline.split('...')[0].replace(/(IN EFFECT|REMAINS IN EFFECT|FROM|UNTIL|THROUGH).*/gi, '').trim();
+            const headline = (alert.properties.headline || '').split('...')[0].trim();
             const row = document.createElement('tr');
             row.className = `border-b border-slate-200 transition ${isScaleRow ? 'nearest-cat-row' : 'hover:bg-slate-50'}`;
-            
             row.innerHTML = `
-                <td class="p-2 font-black text-blue-900 align-middle text-2xl w-28 uppercase">${hub.state}</td>
-                <td class="p-2 font-bold text-slate-800 align-middle text-xl overflow-hidden text-ellipsis whitespace-nowrap w-48">
-                    ${hub.name}${isScaleRow ? '<span class="cat-badge">⭐ CAT</span>' : (hub.isCatScale ? '<span class="cat-badge">CAT</span>' : '')}
-                </td>
-                <td class="p-2 align-middle w-40">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block text-center ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span>
-                </td>
-                <td class="p-2 text-xl align-middle text-slate-700 font-bold leading-none w-64">
-                    <div class="uppercase tracking-tight"><span class="text-slate-400 mr-2 text-[10px] uppercase">Starts</span> ${formatDate(alert.properties.effective)}</div>
-                    <div class="uppercase tracking-tight mt-1"><span class="text-slate-400 mr-2 text-[10px] uppercase">Ends</span> ${formatDate(alert.properties.ends || alert.properties.expires)}</div>
+                <td class="p-2 font-black text-blue-900 align-middle text-2xl uppercase">${hub.state || 'US'}</td>
+                <td class="p-2 font-bold text-slate-800 align-middle text-xl truncate">${hub.name}${isScaleRow ? '<span class="cat-badge">⭐ SCALE</span>' : ''}</td>
+                <td class="p-2 align-middle w-40 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter block ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span></td>
+                <td class="p-2 text-xl align-middle text-slate-700 font-bold leading-none">
+                    <div class="uppercase tracking-tight text-sm"><span class="text-slate-400 mr-2 text-[10px]">Starts</span> ${formatDate(alert.properties.effective)}</div>
+                    <div class="uppercase tracking-tight text-sm mt-1"><span class="text-slate-400 mr-2 text-[10px]">Ends</span> ${formatDate(alert.properties.ends || alert.properties.expires)}</div>
                 </td>
                 <td class="p-2 align-middle">
-                    <div class="flex items-center gap-3 overflow-hidden">
-                         <a href="https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}" target="_blank" class="bg-slate-800 text-white px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 transition shadow-md shrink-0">View Link</a>
-                         <p class="font-bold text-slate-800 text-xl overflow-hidden text-ellipsis whitespace-nowrap" title="${rawHeadline.replace(/"/g, '&quot;')}">${cleanHeadline || rawHeadline}</p>
+                    <div class="flex items-center gap-3">
+                         <a href="https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}" target="_blank" class="bg-slate-800 text-white px-3 py-1 rounded text-[10px] uppercase hover:bg-blue-600 shrink-0">View</a>
+                         <p class="font-bold text-slate-800 text-lg truncate">${headline}</p>
                     </div>
                 </td>
             `;
@@ -575,26 +530,15 @@
         function appendEmptyRow(hub, tbody, isScaleRow) {
             const row = document.createElement('tr');
             row.className = `border-b border-slate-200 transition ${isScaleRow ? 'nearest-cat-row font-black' : 'bg-slate-50 opacity-75'}`;
-            
             row.innerHTML = `
-                <td class="p-2 font-black align-middle text-2xl w-28 uppercase ${isScaleRow ? 'text-amber-800' : 'text-slate-400'}">${hub.state}</td>
-                <td class="p-2 font-bold align-middle text-xl w-48 ${isScaleRow ? 'text-amber-900' : 'text-slate-400'}">
-                    ${hub.name}${isScaleRow ? '<span class="cat-badge">⭐ CAT</span>' : (hub.isCatScale ? '<span class="cat-badge">CAT</span>' : '')}
-                </td>
-                <td class="p-2 align-middle w-40 text-center">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${isScaleRow ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'}">
-                        ${isScaleRow ? 'Operational' : 'None'}
-                    </span>
-                </td>
-                <td class="p-2 text-xl align-middle font-medium w-64 italic ${isScaleRow ? 'text-amber-700' : 'text-slate-400'}">
-                    ${isScaleRow ? 'Priority Scale Point' : 'Clear Conditions'}
-                </td>
+                <td class="p-2 font-black align-middle text-2xl uppercase ${isScaleRow ? 'text-amber-800' : 'text-slate-400'}">${hub.state || 'US'}</td>
+                <td class="p-2 font-bold align-middle text-xl ${isScaleRow ? 'text-amber-900' : 'text-slate-400'}">${hub.name}${isScaleRow ? '<span class="cat-badge">⭐ SCALE</span>' : ''}</td>
+                <td class="p-2 align-middle text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase ${isScaleRow ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'}">${isScaleRow ? 'Active' : 'None'}</span></td>
+                <td class="p-2 text-xl align-middle font-medium italic ${isScaleRow ? 'text-amber-700' : 'text-slate-400'}">${isScaleRow ? 'Weight Check' : 'Clear'}</td>
                 <td class="p-2 align-middle">
-                    <div class="flex items-center gap-3 overflow-hidden">
-                         <a href="https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}" target="_blank" class="px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition shadow-sm shrink-0 ${isScaleRow ? 'bg-amber-700 text-white hover:bg-amber-800' : 'bg-slate-300 text-slate-600 hover:bg-slate-400'}">View</a>
-                         <p class="${isScaleRow ? 'text-amber-800 font-bold' : 'text-slate-400'} text-xl italic">
-                            ${isScaleRow ? 'Scale Location: No Active Weather Advisories' : 'No reports issued on this line'}
-                         </p>
+                    <div class="flex items-center gap-3">
+                         <a href="https://forecast.weather.gov/MapClick.php?lat=${hub.lat}&lon=${hub.lon}" target="_blank" class="px-3 py-1 rounded text-[10px] uppercase transition ${isScaleRow ? 'bg-amber-700 text-white hover:bg-amber-800' : 'bg-slate-300 text-slate-600 hover:bg-slate-400'}">View</a>
+                         <p class="${isScaleRow ? 'text-amber-800 font-bold' : 'text-slate-400'} text-lg italic">No active reports</p>
                     </div>
                 </td>
             `;
@@ -612,11 +556,10 @@
             if (!str) return "--";
             const d = new Date(str);
             const hour = d.getHours();
-            let period = "Night";
-            if (hour >= 5 && hour < 12) period = "Morning";
-            else if (hour >= 12 && hour < 17) period = "Noon";
-            const datePart = d.toLocaleDateString([], {month: 'short', day: 'numeric'});
-            return `${datePart} (${period})`;
+            let p = "Night";
+            if (hour >= 5 && hour < 12) p = "Morning";
+            else if (hour >= 12 && hour < 17) p = "Noon";
+            return `${d.toLocaleDateString([], {month: 'short', day: 'numeric'})} (${p})`;
         }
     </script>
 </body>
