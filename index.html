@@ -96,6 +96,7 @@
             justify-content: center;
             font-size: 1.25rem;
             box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            cursor: pointer;
         }
 
         .leaflet-tooltip-own {
@@ -142,7 +143,7 @@
                 🚀 SmartRoute
             </h1>
             <p class="text-blue-100 text-base mt-1">
-                US-Only Dispatch Engine: Road-Following Distance Tool, 40mi Toll Search, and Segmented Weather Polling.
+                US-Only Dispatch Engine: Road-Following Distance Tool, 40mi Toll Search, and Live Radar Overlay.
             </p>
         </div>
 
@@ -206,11 +207,6 @@
                 <span id="loadingText" class="font-bold text-xl">Mapping chain and polling enroute databases...</span>
             </div>
 
-            <div id="routeSummary" class="hidden mt-6 mb-4 p-4 bg-slate-50 border rounded-lg flex flex-wrap gap-2 items-center text-lg text-slate-600">
-                <span class="font-bold text-slate-800">Operational Chain:</span>
-                <div id="pathDisplay" class="flex flex-wrap gap-1 items-center"></div>
-            </div>
-
             <!-- Toll Summary Section -->
             <div id="tollSection" class="hidden mb-6 bg-purple-50 border border-purple-200 rounded-lg p-4 shadow-sm">
                 <div class="flex justify-between items-center mb-2">
@@ -270,9 +266,22 @@
                         </table>
                     </div>
                 </div>
-                
-                <div id="mapSection" class="mt-8 relative">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Infrastructure Visualization</h3>
+
+                <!-- LEG DISPATCH DATA -->
+                <div id="legDisplay" class="hidden mb-4 p-4 bg-slate-50 border border-slate-200 rounded-xl shadow-sm">
+                    <h3 class="text-xs font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center gap-2">
+                        🏁 Dispatch Legs & Road Distances
+                    </h3>
+                    <div id="legList" class="flex flex-wrap gap-4 items-center"></div>
+                </div>
+
+                <div id="mapSection" class="mt-4 relative">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xl font-bold text-gray-800 border-b pb-2 flex-grow">Infrastructure Visualization</h3>
+                        <button id="radarBtn" onclick="toggleRadar()" class="ml-4 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-tighter shadow-sm transition flex items-center gap-2 shrink-0">
+                            📡 Toggle Live Radar
+                        </button>
+                    </div>
                     <div id="map" class="shadow-inner"></div>
                     
                     <!-- Measurer Overlay -->
@@ -295,7 +304,7 @@
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#10b981]"></span> Pickup</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#ef4444]"></span> Delivery</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#2563eb]"></span> Intermediate Stop</div>
-                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#3b82f6] shadow-[0_0_3px_#3b82f6]"></span> Polled Weather Hub</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#3b82f6] shadow-[0_0_3px_#3b82f6]"></span> Weather Hub</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#facc15] shadow-[0_0_5px_#facc15]"></span> CAT Scale</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-blue-600 border border-white"></span> Truck Wash</div>
                         <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#a855f7]"></span> Toll Gantry</div>
@@ -306,7 +315,7 @@
     </div>
 
     <script>
-        let map = null, routeLayer = null, markerLayer = null;
+        let map = null, routeLayer = null, markerLayer = null, radarLayer = null;
         let hubs = [], tolls = [], washes = [];
         let sessionStartTime = 0;
 
@@ -405,6 +414,29 @@
                 checkBtn.disabled = false; document.getElementById('btnText').innerText = "Analyze SmartRoute";
                 initMap(); drawGlobalTolls();
             } catch (err) { log(`Sync Error: ${err.message}`, true); }
+        }
+
+        async function toggleRadar() {
+            const btn = document.getElementById('radarBtn');
+            if (radarLayer) {
+                map.removeLayer(radarLayer);
+                radarLayer = null;
+                btn.className = "ml-4 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-tighter shadow-sm transition flex items-center gap-2 shrink-0";
+            } else {
+                log("Fetching latest radar timestamps...");
+                try {
+                    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+                    const data = await res.json();
+                    const timestamp = data.radar.past[data.radar.past.length - 1].time;
+                    radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${timestamp}/256/{z}/{x}/{y}/2/1_1.png`, {
+                        opacity: 0.9, // Increased opacity for better visibility
+                        zIndex: 100
+                    }).addTo(map);
+                    btn.className = "ml-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-tighter shadow-sm transition flex items-center gap-2 shrink-0";
+                } catch (e) {
+                    log("Radar Fetch Error: " + e.message, true);
+                }
+            }
         }
 
         function toggleLog(forceOpen = false) {
@@ -537,7 +569,6 @@
                         throw new Error("No road path found.");
                     }
                 } catch (e) {
-                    // Fallback to straight line if OSRM fails
                     measureLine = L.polyline([posA, posB], { color: '#ef4444', weight: 3, dashArray: '5, 10', opacity: 0.7 }).addTo(map);
                     const dist = getDistance(posA.lat, posA.lng, posB.lat, posB.lng);
                     document.getElementById('measureDist').innerText = `${dist.toFixed(1)} mi (Air)`;
@@ -588,7 +619,7 @@
             const loading = document.getElementById('loading'), resArea = document.getElementById('resultsArea'), tollSection = document.getElementById('tollSection'), tollList = document.getElementById('tollList'), totalTollEl = document.getElementById('totalTollCost'), scaleSection = document.getElementById('scaleSection'), washSection = document.getElementById('washSection'), weatherSection = document.getElementById('weatherSection');
             
             loading.classList.remove('hidden'); resArea.classList.add('hidden'); tollSection.classList.add('hidden'); scaleSection.classList.add('hidden'); washSection.classList.add('hidden'); weatherSection.classList.add('hidden');
-            document.getElementById('scaleTableBody').innerHTML = ''; document.getElementById('washTableBody').innerHTML = ''; document.getElementById('alertTableBody').innerHTML = ''; document.getElementById('pathDisplay').innerHTML = ''; document.getElementById('logLines').innerHTML = '';
+            document.getElementById('scaleTableBody').innerHTML = ''; document.getElementById('washTableBody').innerHTML = ''; document.getElementById('alertTableBody').innerHTML = ''; document.getElementById('legList').innerHTML = ''; document.getElementById('logLines').innerHTML = '';
 
             try {
                 const filledPoints = [];
@@ -621,6 +652,20 @@
                 let response = await fetch(`https://router.project-osrm.org/route/v1/driving/${wpQuery}?overview=full&geometries=geojson&steps=true`);
                 let osrmData = await response.json();
                 let roadCoords = osrmData.routes[0].geometry.coordinates;
+
+                // Build Leg Display
+                const legDisplay = document.getElementById('legDisplay');
+                const legList = document.getElementById('legList');
+                legDisplay.classList.remove('hidden');
+                osrmData.routes[0].legs.forEach((leg, i) => {
+                    const start = waypoints[i].name;
+                    const end = waypoints[i+1].name;
+                    const miles = (leg.distance * 0.000621371).toFixed(1);
+                    const div = document.createElement('div');
+                    div.className = "bg-white p-2 rounded-lg border border-slate-300 shadow-sm flex items-center gap-2";
+                    div.innerHTML = `<span class="text-[10px] font-black text-slate-400">#${i+1}</span> <span class="font-bold text-blue-900">${start}</span> <span class="text-slate-400">→</span> <span class="font-bold text-blue-900">${end}</span> <span class="bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-black ml-2">${miles} mi</span>`;
+                    legList.appendChild(div);
+                });
 
                 // Canada Guard
                 let canadaDetected = false;
@@ -707,12 +752,6 @@
                 tripSequence.sort((a,b) => getDistance(waypoints[0].lat, waypoints[0].lon, a.lat, a.lon) - getDistance(waypoints[0].lat, waypoints[0].lon, b.lat, b.lon));
                 const uniqueTripSequence = Array.from(new Set(tripSequence.map(s => s.name + s.state))).map(id => tripSequence.find(s => (s.name + s.state) === id));
 
-                uniqueTripSequence.forEach((c, i) => {
-                    const span = document.createElement('span'); span.className = `bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-bold border border-blue-200`; span.innerText = c.name; document.getElementById('pathDisplay').appendChild(span);
-                    if (i < uniqueTripSequence.length - 1) document.getElementById('pathDisplay').innerHTML += `<span class="text-slate-400 mx-1">→</span>`;
-                });
-                if (uniqueTripSequence.length > 0) document.getElementById('routeSummary').classList.remove('hidden');
-
                 if (scaleResults.length > 0) {
                     scaleSection.classList.remove('hidden');
                     for (const s of scaleResults) appendOperationalRow(s, document.getElementById('scaleTableBody'), 'scale');
@@ -763,6 +802,7 @@
                     });
                     if (filtered.length > 0) {
                         point.weatherIcon = getWeatherEmoji(filtered[0].properties.event);
+                        point.weatherLink = `https://forecast.weather.gov/MapClick.php?lat=${point.lat}&lon=${point.lon}`;
                         return filtered;
                     }
                 }
@@ -806,7 +846,8 @@
                 const size = isWP ? 10 : 4;
                 if (p.weatherIcon) {
                     const icon = L.divIcon({ className: 'weather-icon-marker', html: p.weatherIcon, iconSize: [30, 30] });
-                    L.marker([p.lat, p.lon], { icon }).addTo(markerLayer).bindTooltip(markerLabel, { permanent: true, direction: 'top', className: 'leaflet-tooltip-own' });
+                    const m = L.marker([p.lat, p.lon], { icon }).addTo(markerLayer).bindTooltip(markerLabel, { permanent: true, direction: 'top', className: 'leaflet-tooltip-own' });
+                    m.on('click', () => window.open(p.weatherLink, '_blank'));
                 } else {
                     L.circleMarker([p.lat, p.lon], { radius: size, fillColor: color, color: "#fff", weight: 1.5, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(markerLabel, { permanent: true, direction: 'top', className: 'leaflet-tooltip-own' });
                 }
@@ -826,7 +867,7 @@
         function formatDate(str) {
             if (!str) return "--";
             const d = new Date(str), h = d.getHours();
-            let p = h >= 5 && h < 12 ? "AM" : (h >= 12 && h < 17 ? "PM" : "Night");
+            let p = h >= 5 && h < 12 ? "AM" : (h >= 12 && h < 17) ? "PM" : "Night";
             return `${d.toLocaleDateString([], {month: 'short', day: 'numeric'})} (${p})`;
         }
     </script>
