@@ -86,6 +86,30 @@
 
         .nearest-cat-row { background-color: #fffbeb !important; border-left: 10px solid #f59e0b !important; }
         .wash-row { background-color: #eff6ff !important; border-left: 10px solid #2563eb !important; }
+
+        .weather-icon-marker {
+            background: white;
+            border: 2px solid #ef4444;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+
+        /* Styling for permanent labels to make them stand out */
+        .leaflet-tooltip-own {
+            background: rgba(15, 23, 42, 0.9);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .leaflet-tooltip-top:before { border-top-color: rgba(15, 23, 42, 0.9); }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-900">
@@ -96,7 +120,7 @@
                 🚀 SmartRoute
             </h1>
             <p class="text-blue-100 text-base mt-1">
-                Multi-Stop Dispatch Engine: Webhook Sync, 0.5mi Resampling, 50mi Wash Radius, 4mi Toll Net.
+                US-Only Dispatch Engine: Precise City Logic, 0.5mi Resampling, 1mi Scale Check, 50mi Wash Radius.
             </p>
         </div>
 
@@ -149,7 +173,7 @@
 
             <div id="loading" class="hidden mt-6 p-6 bg-blue-50 text-blue-700 rounded-xl text-center border border-blue-100">
                 <div class="loader mr-3"></div> 
-                <span id="loadingText" class="font-bold text-xl">Mapping chain and polling enroute databases...</span>
+                <span id="loadingText" class="font-bold text-xl">Mapping dispatch chain and calculating infrastructure intersects...</span>
             </div>
 
             <div id="routeSummary" class="hidden mt-6 mb-4 p-4 bg-slate-50 border rounded-lg flex flex-wrap gap-2 items-center text-lg text-slate-600">
@@ -238,10 +262,13 @@
         let map = null, routeLayer = null, markerLayer = null;
         let hubs = [], tolls = [], washes = [];
 
+        const stateAbbrMap = {
+            'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+        };
+
         const cityCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=0&single=true&output=csv";
         const tollCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=1793109645&single=true&output=csv";
         const washCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCgGN8rGTUO3hN-b2QKMe3cLchE_45Y-xfsFciJc-YJ_NJ-Z3_TZSMzRV2Jthc-FYGpnQoycZmvVpv/pub?gid=819928679&single=true&output=csv";
-        const webhookUrl = "https://chat.googleapis.com/v1/spaces/AAAAATN6AAc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=PaDfLcEmmGRAZBoq5bm9_m2rCCe1eU3YS1hKMCVfWJc";
 
         window.onload = async () => {
             await loadAllData();
@@ -266,18 +293,34 @@
             result.push(cell); return result;
         }
 
+        function normalizeState(state) {
+            if (!state) return "";
+            state = state.trim().toLowerCase();
+            if (stateAbbrMap[state]) return stateAbbrMap[state];
+            return state.toUpperCase();
+        }
+
         async function loadAllData() {
             const statusEl = document.getElementById('dataLoadingStatus'), checkBtn = document.getElementById('checkBtn');
             try {
+                // Cities
                 const cityRes = await fetch(cityCsvUrl);
                 const cityText = await cityRes.text();
                 const cityLines = cityText.split(/\r?\n/).filter(l => l.trim().length > 0);
                 hubs = cityLines.slice(1).map(line => {
                     const parts = parseCSVLine(line);
                     if (parts.length < 4) return null;
-                    return { name: parts[0].trim(), state: parts[1].trim(), lat: parseFloat(parts[2]), lon: parseFloat(parts[3]), pop: parseInt(parts[4]) || 0, isCatScale: parts[5] ? (parts[5].toLowerCase().includes('true') || parts[5].trim() === '1') : false };
+                    return { 
+                        name: parts[0].trim(), 
+                        state: normalizeState(parts[1]), 
+                        lat: parseFloat(parts[2]), 
+                        lon: parseFloat(parts[3]), 
+                        pop: parseInt(parts[4]) || 0, 
+                        isCatScale: parts[5] ? (parts[5].toLowerCase().includes('true') || parts[5].trim() === '1') : false 
+                    };
                 }).filter(h => h !== null && !isNaN(h.lat));
 
+                // Tolls
                 const tollRes = await fetch(tollCsvUrl);
                 const tollText = await tollRes.text();
                 if (tollText) {
@@ -293,6 +336,7 @@
                     }).filter(t => t !== null);
                 }
 
+                // Truck Washes
                 const washRes = await fetch(washCsvUrl);
                 const washText = await washRes.text();
                 if (washText) {
@@ -307,7 +351,7 @@
                     }).filter(w => w !== null);
                 }
 
-                statusEl.innerHTML = `✅ ${hubs.length.toLocaleString()} locations, ${tolls.length} tolls & ${washes.length} washes active. Ready.`;
+                statusEl.innerHTML = `✅ ${hubs.length.toLocaleString()} locations, ${tolls.length} tolls & ${washes.length} washes synced. Ready.`;
                 statusEl.className = "mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 font-medium text-sm flex items-center gap-3";
                 checkBtn.disabled = false; document.getElementById('btnText').innerText = "Analyze SmartRoute";
                 initMap(); drawGlobalTolls();
@@ -321,40 +365,53 @@
             lines.appendChild(entry); logBox.scrollTop = logBox.scrollHeight;
         }
 
-        async function notifyWebhook(waypoints) {
-            log(`Syncing Dispatch to Google Chat...`);
-            const stopsText = waypoints.map((wp, i) => {
-                const label = i === 0 ? "Pickup" : (i === waypoints.length - 1 ? "Delivery" : `Stop ${i}`);
-                return `${label}: ${wp.name}, ${wp.state || ''}`;
-            }).join(' → ');
-
-            const payload = {
-                text: `🚛 *SmartRoute Dispatch Initiated*\n*Sequence:* ${stopsText}\n*Time:* ${new Date().toLocaleString()}`
-            };
-
-            try {
-                await fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            } catch (err) {
-                console.error("Webhook notification failed:", err);
-            }
-        }
-
         async function geocode(location) {
             if (!location || !location.trim()) return null;
             log(`Locating: ${location}...`);
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&countrycodes=us&limit=1`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&countrycodes=us&limit=1&addressdetails=1`);
                 if (response.ok) {
                     const data = await response.json();
-                    if (data && data.length > 0) return { name: location.split(',')[0].trim(), lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                    if (data && data.length > 0) {
+                        const addr = data[0].address;
+                        const stCode = normalizeState(addr.state || '');
+                        return { name: location.split(',')[0].trim(), state: stCode, lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                    }
                 }
             } catch (err) {}
-            const query = location.toLowerCase();
-            return hubs.find(h => query.includes(h.name.toLowerCase()) && (!query.includes(',') || query.includes(h.state.toLowerCase()))) || null;
+
+            // Local Strict Standardizing Fallback
+            const queryRaw = location.toLowerCase().trim();
+            const parts = queryRaw.split(',').map(s => s.trim());
+            const cityQuery = parts[0];
+            let stateQuery = normalizeState(parts[1] || '');
+
+            let match = hubs.find(h => h.name.toLowerCase() === cityQuery && (stateQuery === '' || h.state.toLowerCase() === stateQuery.toLowerCase()));
+            if (match) return match;
+
+            match = hubs.find(h => h.name.toLowerCase() === cityQuery);
+            if (match) return match;
+
+            return hubs.find(h => queryRaw.includes(h.name.toLowerCase()) && (stateQuery === '' || queryRaw.includes(h.state.toLowerCase()))) || null;
+        }
+
+        async function reverseGeocode(lat, lon) {
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.display_name || "Address unknown";
+                }
+            } catch (e) {}
+            return "Address unavailable";
+        }
+
+        async function zoomToLocation(lat, lon, name, brand = "") {
+            map.setView([lat, lon], 15);
+            const label = brand ? `${brand} - ${name}` : name;
+            const popup = L.popup().setLatLng([lat, lon]).setContent(`<div class="p-2 font-sans"><b>${label}</b><br><span class='text-xs text-slate-500'>Retrieving address...</span></div>`).openOn(map);
+            const address = await reverseGeocode(lat, lon);
+            popup.setContent(`<div class="p-2 font-sans"><b class='text-blue-900'>${label}</b><br><span class='text-sm text-slate-700'>${address}</span><br><br><a href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}" target="_blank" class="text-[10px] text-blue-600 font-bold underline uppercase">Google Maps</a></div>`);
         }
 
         function initMap() {
@@ -394,47 +451,51 @@
         }
 
         async function calculateAndCheck() {
-            const inputs = [
-                { id: 'startInput', washId: 'startWash', label: 'Pickup' },
-                { id: 'stop1Input', washId: 'stop1Wash', label: 'Stop 1' },
-                { id: 'stop2Input', washId: 'stop2Wash', label: 'Stop 2' },
-                { id: 'endInput', washId: 'endWash', label: 'Delivery' }
-            ];
-
-            const loading = document.getElementById('loading'), resArea = document.getElementById('resultsArea');
-            const tollSection = document.getElementById('tollSection'), tollList = document.getElementById('tollList'), totalTollEl = document.getElementById('totalTollCost');
-            const scaleSection = document.getElementById('scaleSection'), washSection = document.getElementById('washSection');
+            const inputs = [{ id: 'startInput', washId: 'startWash' }, { id: 'stop1Input', washId: 'stop1Wash' }, { id: 'stop2Input', washId: 'stop2Wash' }, { id: 'endInput', washId: 'endWash' }];
+            const loading = document.getElementById('loading'), resArea = document.getElementById('resultsArea'), tollSection = document.getElementById('tollSection'), tollList = document.getElementById('tollList'), totalTollEl = document.getElementById('totalTollCost'), scaleSection = document.getElementById('scaleSection'), washSection = document.getElementById('washSection');
             
-            loading.classList.remove('hidden'); resArea.classList.add('hidden'); 
-            tollSection.classList.add('hidden'); scaleSection.classList.add('hidden'); washSection.classList.add('hidden');
-            
-            document.getElementById('scaleTableBody').innerHTML = '';
-            document.getElementById('washTableBody').innerHTML = '';
-            document.getElementById('alertTableBody').innerHTML = '';
-            document.getElementById('pathDisplay').innerHTML = '';
-            document.getElementById('logLines').innerHTML = '';
+            loading.classList.remove('hidden'); resArea.classList.add('hidden'); tollSection.classList.add('hidden'); scaleSection.classList.add('hidden'); washSection.classList.add('hidden');
+            document.getElementById('scaleTableBody').innerHTML = ''; document.getElementById('washTableBody').innerHTML = ''; document.getElementById('alertTableBody').innerHTML = ''; document.getElementById('pathDisplay').innerHTML = ''; document.getElementById('logLines').innerHTML = '';
 
             try {
-                const waypoints = [];
-                for (const inp of inputs) {
-                    const val = document.getElementById(inp.id).value.trim();
+                const filledPoints = [];
+                for (let i = 0; i < inputs.length; i++) {
+                    const val = document.getElementById(inputs[i].id).value.trim();
                     if (val) {
                         const pt = await geocode(val);
-                        if (pt) { pt.label = inp.label; pt.requestWash = document.getElementById(inp.washId).checked; waypoints.push(pt); }
+                        if (pt) { pt.requestWash = document.getElementById(inputs[i].washId).checked; filledPoints.push(pt); }
+                        else log(`❌ Location not found: "${val}"`, true);
                     }
                 }
-                if (waypoints.length < 2) throw new Error("Pickup and Delivery required.");
+                if (filledPoints.length < 2) throw new Error("At least Pickup and one Destination required.");
 
-                // Trigger Webhook Sync
-                notifyWebhook(waypoints);
+                const waypoints = filledPoints.map((pt, idx, arr) => {
+                    if (idx === 0) pt.label = "Pickup";
+                    else if (idx === arr.length - 1) pt.label = "Delivery";
+                    else pt.label = `Stop ${idx}`;
+                    return pt;
+                });
 
-                const wpQuery = waypoints.map(p => `${p.lon},${p.lat}`).join(';');
-                const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${wpQuery}?overview=full&geometries=geojson`);
-                const osrmData = await response.json();
-                const roadCoords = osrmData.routes[0].geometry.coordinates;
+                let wpQuery = waypoints.map(p => `${p.lon},${p.lat}`).join(';');
+                let response = await fetch(`https://router.project-osrm.org/route/v1/driving/${wpQuery}?overview=full&geometries=geojson`);
+                let osrmData = await response.json();
+                let roadCoords = osrmData.routes[0].geometry.coordinates;
+
+                // Canada Guard
+                let canadaDetected = false;
+                for (const coord of roadCoords) { if (coord[1] > 42.35 && coord[0] > -82.8 && coord[0] < -79.0) { canadaDetected = true; break; } }
+                if (canadaDetected) {
+                    const cleveland = { name: "Cleveland", state: "OH", lat: 41.4993, lon: -81.6944 };
+                    waypoints.splice(Math.ceil(waypoints.length / 2), 0, cleveland);
+                    wpQuery = waypoints.map(p => `${p.lon},${p.lat}`).join(';');
+                    response = await fetch(`https://router.project-osrm.org/route/v1/driving/${wpQuery}?overview=full&geometries=geojson`);
+                    osrmData = await response.json();
+                    roadCoords = osrmData.routes[0].geometry.coordinates;
+                }
+
                 const densePath = interpolatePath(roadCoords, 0.5);
 
-                // 1. TOLLS (4mi radius)
+                // TOLLS
                 const detectedTolls = [], seenTolls = new Set();
                 tolls.forEach(toll => {
                     let enroute = false;
@@ -444,29 +505,22 @@
                 });
                 if (detectedTolls.length > 0) {
                     let total = 0; tollList.innerHTML = '';
-                    detectedTolls.forEach(t => {
-                        total += t.price;
-                        const div = document.createElement('div'); div.className = 'flex justify-between border-b border-purple-100 py-1 px-1';
-                        div.innerHTML = `<span class="truncate pr-2 font-medium">${t.name}</span> <span class="font-bold shrink-0">$${t.price.toFixed(2)}</span>`;
-                        tollList.appendChild(div);
-                    });
+                    detectedTolls.forEach(t => { total += t.price; const div = document.createElement('div'); div.className = 'flex justify-between border-b border-purple-100 py-1 px-1'; div.innerHTML = `<span class="truncate pr-2 font-medium">${t.name}</span> <span class="font-bold shrink-0">$${t.price.toFixed(2)}</span>`; tollList.appendChild(div); });
                     totalTollEl.innerText = `Total: $${total.toFixed(2)}`; tollSection.classList.remove('hidden');
                 }
 
-                // 2. LOGISTICS DATA
-                const top3OriginScales = hubs.filter(h => h.isCatScale)
-                    .map(h => ({...h, dist: getDistance(waypoints[0].lat, waypoints[0].lon, h.lat, h.lon)}))
-                    .filter(h => h.dist <= 50).sort((a,b) => a.dist - b.dist).slice(0, 3);
-
+                // Origin Scales
+                const top3OriginScales = hubs.filter(h => h.isCatScale).map(h => ({...h, dist: getDistance(waypoints[0].lat, waypoints[0].lon, h.lat, h.lon)})).filter(h => h.dist <= 50).sort((a,b) => a.dist - b.dist).slice(0, 3);
+                
+                // Requested Washes
                 const requestedWashes = [];
                 waypoints.forEach(wp => {
                     if (wp.requestWash) {
-                        washes.filter(w => getDistance(wp.lat, wp.lon, w.lat, w.lon) <= 50)
-                            .map(w => ({...w, nearStop: wp.name, dist: getDistance(wp.lat, wp.lon, w.lat, w.lon)}))
-                            .sort((a,b) => a.dist - b.dist).slice(0, 3).forEach(lw => requestedWashes.push(lw));
+                        washes.filter(w => getDistance(wp.lat, wp.lon, w.lat, w.lon) <= 50).map(w => ({...w, nearStop: wp.name, dist: getDistance(wp.lat, wp.lon, w.lat, w.lon)})).sort((a,b) => a.dist - b.dist).slice(0, 3).forEach(lw => requestedWashes.push(lw));
                     }
                 });
 
+                // Weather Hubs
                 const weatherHubs = [], seenHubs = new Set();
                 let currentTotalDist = 0, lastHubDist = 0;
                 for (let i = 1; i < densePath.length; i++) {
@@ -478,59 +532,51 @@
                     }
                 }
 
-                const enrouteScales = [];
-                const seenEIds = new Set();
-                hubs.forEach(h => {
-                    if(h.isCatScale) {
-                        let isE = false;
-                        for (const rp of densePath) { if (getDistance(h.lat, h.lon, rp[1], rp[0]) < 1.0) { isE = true; break; } }
-                        if(isE && !seenEIds.has(h.name)) { seenEIds.add(h.name); enrouteScales.push(h); }
-                    }
-                });
-
-                const tripSequence = [...waypoints, ...enrouteScales, ...weatherHubs].sort((a,b) => getDistance(waypoints[0].lat, waypoints[0].lon, a.lat, a.lon) - getDistance(waypoints[0].lat, waypoints[0].lon, b.lat, b.lon));
+                const tripSequence = [...waypoints, ...weatherHubs].sort((a,b) => getDistance(waypoints[0].lat, waypoints[0].lon, a.lat, a.lon) - getDistance(waypoints[0].lat, waypoints[0].lon, b.lat, b.lon));
 
                 tripSequence.forEach((c, i) => {
-                    const span = document.createElement('span'); span.className = `bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-bold border border-blue-200`;
-                    span.innerText = c.name; document.getElementById('pathDisplay').appendChild(span);
+                    const span = document.createElement('span'); span.className = `bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-bold border border-blue-200`; span.innerText = c.name; document.getElementById('pathDisplay').appendChild(span);
                     if (i < tripSequence.length - 1) document.getElementById('pathDisplay').innerHTML += `<span class="text-slate-400 mx-1">→</span>`;
                 });
                 document.getElementById('routeSummary').classList.remove('hidden');
 
                 if (top3OriginScales.length > 0) {
                     scaleSection.classList.remove('hidden');
-                    for (const s of top3OriginScales) appendSimpleOperationalRow(s, document.getElementById('scaleTableBody'), 'scale');
+                    for (const s of top3OriginScales) appendOperationalRow(s, document.getElementById('scaleTableBody'), 'scale');
                 }
                 if (requestedWashes.length > 0) {
                     washSection.classList.remove('hidden');
-                    for (const w of requestedWashes) appendSimpleOperationalRow(w, document.getElementById('washTableBody'), 'wash');
+                    for (const w of requestedWashes) appendOperationalRow(w, document.getElementById('washTableBody'), 'wash');
                 }
-                for (const p of tripSequence) await processTableRow(p, document.getElementById('alertTableBody'), false);
+                
+                // Weather Report Processing
+                for (const p of tripSequence) await processTableRow(p, document.getElementById('alertTableBody'));
 
-                initMap(); drawRoadMap(osrmData.routes[0].geometry, waypoints, top3OriginScales, requestedWashes);
-                document.getElementById('timestamp').innerText = `Synced: ${new Date().toLocaleTimeString()}`;
+                initMap(); drawRoadMap(osrmData.routes[0].geometry, waypoints, top3OriginScales, requestedWashes, tripSequence);
+                document.getElementById('timestamp').innerText = `${new Date().toLocaleTimeString()}`;
                 resArea.classList.remove('hidden'); setTimeout(() => map.invalidateSize(), 200);
 
-            } catch (err) { log(`Operational Error: ${err.message}`, true); } finally { loading.classList.add('hidden'); }
+            } catch (err) { log(`Error: ${err.message}`, true); } finally { loading.classList.add('hidden'); }
         }
 
-        function appendSimpleOperationalRow(point, tbody, type) {
+        function appendOperationalRow(point, tbody, type) {
             const row = document.createElement('tr');
-            let badge = '';
-            if(type === 'scale') badge = '<span class="cat-badge">⭐ ORIGIN SCALE</span>';
-            else if(type === 'wash') badge = `<span class="wash-badge">${point.brand || 'WASH'} NEAR ${point.nearStop || 'STOP'}</span>`;
+            let badge = type === 'scale' ? '<span class="cat-badge">⭐ ORIGIN SCALE</span>' : `<span class="wash-badge">${point.brand || 'WASH'} NEAR ${point.nearStop || 'STOP'}</span>`;
+            const tabAttr = type === 'wash' ? 'tabindex="-1"' : '';
+            
+            let actionHtml = '';
+            if (type === 'wash') {
+                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lon}`;
+                actionHtml = `<a href="${mapsUrl}" target="_blank" ${tabAttr} class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider shadow-sm transition inline-block">Google Maps</a>`;
+            }
 
-            row.className = `border-b border-slate-100 ${type==='scale'?'nearest-cat-row':(type==='wash'?'wash-row':'')}`;
-            row.innerHTML = `
-                <td class="p-2 font-black text-blue-900 text-lg uppercase">${point.state || 'US'}</td>
-                <td class="p-2 font-bold text-slate-800 text-lg" colspan="2">${point.name}${badge}</td>
-                <td class="p-2 text-xl align-middle font-medium italic text-slate-400" colspan="2">${type === 'scale' ? 'Origin Weight Check' : (type === 'wash' ? `Facility Proximity Search` : '')}</td>
-            `;
+            row.className = `border-b border-slate-100 ${type === 'scale' ? 'nearest-cat-row' : 'wash-row'}`;
+            row.innerHTML = `<td class="p-2 font-black text-blue-900 text-lg uppercase">${point.state || 'US'}</td><td class="p-2 font-bold text-slate-800 text-lg">${point.name}${badge}</td><td class="p-2 align-middle text-right pr-4">${actionHtml}</td>`;
             tbody.appendChild(row);
         }
 
-        async function processTableRow(point, tbody, type) {
-            log(`Syncing report for ${point.name}...`);
+        async function processTableRow(point, tbody) {
+            log(`Syncing weather: ${point.name}...`);
             let reports = false;
             try {
                 const response = await fetch(`https://api.weather.gov/alerts/active?point=${parseFloat(point.lat).toFixed(4)},${parseFloat(point.lon).toFixed(4)}`);
@@ -540,66 +586,64 @@
                         const e = f.properties.event.toLowerCase();
                         return e.includes('winter') || e.includes('ice') || e.includes('snow') || e.includes('cold') || e.includes('wind') || e.includes('storm') || e.includes('flood') || e.includes('warning') || e.includes('watch') || e.includes('advisory') || e.includes('fog');
                     });
-                    if (filtered.length > 0) { reports = true; filtered.forEach(alert => appendWeatherRow(point, alert, tbody, type)); }
+                    if (filtered.length > 0) {
+                        reports = true;
+                        point.weatherIcon = getWeatherEmoji(filtered[0].properties.event);
+                        filtered.forEach(alert => appendWeatherRow(point, alert, tbody));
+                    }
                 }
             } catch (e) {}
-            if (!reports) appendEmptyWeatherRow(point, tbody, type);
+            if (!reports) appendEmptyWeatherRow(point, tbody);
         }
 
-        function drawRoadMap(geo, waypoints, originScales, requestedWashes) {
+        function getWeatherEmoji(event) {
+            const e = event.toLowerCase();
+            if (e.includes('snow') || e.includes('winter')) return '❄️';
+            if (e.includes('ice') || e.includes('freeze')) return '🧊';
+            if (e.includes('wind')) return '💨';
+            if (e.includes('storm') || e.includes('thunder')) return '⛈️';
+            if (e.includes('flood')) return '🌊';
+            if (e.includes('fog')) return '🌫️';
+            return '⚠️';
+        }
+
+        function drawRoadMap(geo, waypoints, originScales, requestedWashes, tripSequence) {
             routeLayer.clearLayers(); markerLayer.clearLayers();
             L.geoJSON(geo, { style: { color: '#2563eb', weight: 6, opacity: 0.8 } }).addTo(routeLayer);
             drawGlobalTolls(); 
-            waypoints.forEach((wp, i) => {
-                const color = i === 0 ? '#10b981' : (i === waypoints.length-1 ? '#ef4444' : '#2563eb');
-                L.circleMarker([wp.lat, wp.lon], { radius: 10, fillColor: color, color: "#fff", weight: 2, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(wp.label || wp.name, { permanent: true, direction: 'top' });
-            });
-            originScales.forEach(s => L.circleMarker([s.lat, s.lon], { radius: 8, fillColor: '#facc15', color: "#fff", weight: 2.5, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(`SCALE: ${s.name}`, { direction: 'bottom' }));
-            requestedWashes.forEach(w => L.circleMarker([w.lat, w.lon], { radius: 7, fillColor: '#2563eb', color: "#fff", weight: 2, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(`WASH: ${w.brand || ''} ${w.name}`, { direction: 'bottom' }));
             
-            const allCoords = geo.coordinates.map(c => [c[1], c[0]]);
-            map.fitBounds(L.latLngBounds(allCoords), { padding: [150, 150], maxZoom: 5 });
+            tripSequence.forEach(p => {
+                const isWP = waypoints.find(wp => wp.lat === p.lat && wp.lon === p.lon);
+                const color = isWP ? (isWP.label === 'Pickup' ? '#10b981' : (isWP.label === 'Delivery' ? '#ef4444' : '#2563eb')) : '#3b82f6';
+                
+                const markerLabel = isWP ? `${isWP.label}: ${isWP.name}, ${isWP.state}` : `${p.name}, ${p.state}`;
+
+                if (p.weatherIcon) {
+                    const icon = L.divIcon({ className: 'weather-icon-marker', html: p.weatherIcon, iconSize: [30, 30] });
+                    L.marker([p.lat, p.lon], { icon }).addTo(markerLayer).bindTooltip(markerLabel, { permanent: true, direction: 'top', className: 'leaflet-tooltip-own' });
+                } else {
+                    L.circleMarker([p.lat, p.lon], { radius: isWP ? 10 : 5, fillColor: color, color: "#fff", weight: 2, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(markerLabel, { permanent: true, direction: 'top', className: 'leaflet-tooltip-own' });
+                }
+            });
+
+            originScales.forEach(s => L.circleMarker([s.lat, s.lon], { radius: 8, fillColor: '#facc15', color: "#fff", weight: 2.5, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(`SCALE: ${s.name}`, { direction: 'bottom' }));
+            requestedWashes.forEach(w => L.circleMarker([w.lat, w.lon], { radius: 7, fillColor: '#2563eb', color: "#fff", weight: 2, opacity: 1, fillOpacity: 1 }).addTo(markerLayer).bindTooltip(`WASH: ${w.brand} ${w.name}`, { direction: 'bottom' }));
+            
+            map.fitBounds(L.latLngBounds(geo.coordinates.map(c => [c[1], c[0]])), { padding: [150, 150], maxZoom: 5 });
         }
 
-        function appendWeatherRow(point, alert, tbody, type) {
+        function appendWeatherRow(point, alert, tbody) {
             const headline = (alert.properties.headline || '').split('...')[0].trim();
             const row = document.createElement('tr');
-            let badge = '';
-            if(type === 'scale') badge = '<span class="cat-badge">⭐ ENROUTE SCALE</span>';
-            else if(type === 'wash') badge = `<span class="wash-badge">${point.brand || 'WASH'} NEAR ${point.nearStop || 'STOP'}</span>`;
-
-            row.className = `border-b border-slate-100 ${type==='scale'?'nearest-cat-row':(type==='wash'?'wash-row':'')}`;
-            row.innerHTML = `
-                <td class="p-2 font-black text-blue-900 text-lg uppercase">${point.state || 'US'}</td>
-                <td class="p-2 font-bold text-slate-800 text-lg">${point.name}${badge}</td>
-                <td class="p-2 align-middle text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase block ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span></td>
-                <td class="p-2 text-xs font-bold leading-none">
-                    <div class="uppercase text-slate-400 mb-1">Starts: ${formatDate(alert.properties.effective)}</div>
-                    <div class="uppercase text-slate-400">Ends: ${formatDate(alert.properties.ends || alert.properties.expires)}</div>
-                </td>
-                <td class="p-2 align-middle">
-                    <div class="flex items-center gap-3"><a href="https://forecast.weather.gov/MapClick.php?lat=${point.lat}&lon=${point.lon}" target="_blank" class="bg-slate-700 text-white px-2 py-1 rounded text-[10px] uppercase font-black shrink-0">View Link</a><p class="font-bold text-slate-800 text-sm truncate">${headline}</p></div>
-                </td>
-            `;
+            row.className = `border-b border-slate-100 hover:bg-slate-50`;
+            row.innerHTML = `<td class="p-2 font-black text-blue-900 text-lg uppercase">${point.state || 'US'}</td><td class="p-2 font-bold text-slate-800 text-lg">${point.name}</td><td class="p-2 align-middle text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase block ${getBadgeColor(alert.properties.event)}">${alert.properties.event}</span></td><td class="p-2 text-xs font-bold leading-none"><div class="uppercase text-slate-400 mb-1">Starts: ${formatDate(alert.properties.effective)}</div><div class="uppercase text-slate-400">Ends: ${formatDate(alert.properties.ends || alert.properties.expires)}</div></td><td class="p-2 align-middle"><div class="flex items-center gap-3"><a href="https://forecast.weather.gov/MapClick.php?lat=${point.lat}&lon=${point.lon}" target="_blank" class="bg-slate-700 text-white px-2 py-1 rounded text-[10px] uppercase font-black shrink-0">View Link</a><p class="font-bold text-slate-800 text-sm truncate">${headline}</p></div></td>`;
             tbody.appendChild(row);
         }
 
-        function appendEmptyWeatherRow(point, tbody, type) {
+        function appendEmptyWeatherRow(point, tbody) {
             const row = document.createElement('tr');
-            let badge = '';
-            if(type === 'scale') badge = '<span class="cat-badge">⭐ SCALE</span>';
-            else if(type === 'wash') badge = `<span class="wash-badge">${point.brand || 'WASH'} NEAR ${point.nearStop || 'STOP'}</span>`;
-
-            row.className = `border-b border-slate-100 ${type==='scale'?'nearest-cat-row':(type==='wash'?'wash-row':'bg-slate-50 opacity-70')}`;
-            row.innerHTML = `
-                <td class="p-2 font-black text-slate-400 text-lg uppercase">${point.state || 'US'}</td>
-                <td class="p-2 font-bold text-slate-500 text-lg">${point.name}${badge}</td>
-                <td class="p-2 align-middle text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-200 text-slate-500">${type ? 'Active' : 'None'}</span></td>
-                <td class="p-2 text-xl align-middle font-medium italic text-slate-400 tracking-tight">${type === 'scale' ? 'Enroute Weight Check' : (type === 'wash' ? `Near ${point.nearStop}` : 'Clear Conditions')}</td>
-                <td class="p-2 align-middle">
-                    <div class="flex items-center gap-3"><a href="https://forecast.weather.gov/MapClick.php?lat=${point.lat}&lon=${point.lon}" target="_blank" class="bg-slate-300 text-slate-500 px-2 py-1 rounded text-[10px] uppercase font-black shrink-0">View Link</a><p class="text-slate-400 text-sm italic">Clear segment</p></div>
-                </td>
-            `;
+            row.className = `border-b border-slate-100 bg-slate-50 opacity-70`;
+            row.innerHTML = `<td class="p-2 font-black text-slate-400 text-lg uppercase">${point.state || 'US'}</td><td class="p-2 font-bold text-slate-500 text-lg">${point.name}</td><td class="p-2 align-middle text-center"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-200 text-slate-500">None</span></td><td class="p-2 text-xl align-middle font-medium italic text-slate-400 tracking-tight">Clear Conditions</td><td class="p-2 align-middle"><div class="flex items-center gap-3"><a href="https://forecast.weather.gov/MapClick.php?lat=${point.lat}&lon=${point.lon}" target="_blank" class="bg-slate-300 text-slate-500 px-2 py-1 rounded text-[10px] uppercase font-black shrink-0">View Link</a><p class="text-slate-400 text-sm italic">Clear segment</p></div></td>`;
             tbody.appendChild(row);
         }
 
